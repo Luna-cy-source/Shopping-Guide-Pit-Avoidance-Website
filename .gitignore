@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+.next/
+.wrangler/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 编辑器
+.vscode/settings.json
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db
+*.log
+wrangler.err
+wrangler.out
+
+# 调试
+*.tsbuildinfo
