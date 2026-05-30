@@ -518,7 +518,7 @@ function generateLocalReport(query: string) {
 // ============================================
 export function ReportStreamer({ query }: ReportStreamerProps) {
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: '/api/search',
+    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/search`,
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);
@@ -596,7 +596,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
 
       setSubmittingIndex(index);
       try {
-        await fetch('/api/feedback', {
+        await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/feedback`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

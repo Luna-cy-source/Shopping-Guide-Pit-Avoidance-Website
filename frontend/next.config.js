@@ -1,14 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // 开发环境代理：将 /api/* 请求转发到 Worker (localhost:8787)
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8787/api/:path*',
-      },
-    ];
+  output: 'export', // 静态导出，适配 Cloudflare Pages
+  images: {
+    unoptimized: true, // 静态导出不支持 Next.js 图片优化
   },
 };
 
