@@ -1065,7 +1065,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           )}
 
           {flaws.length > 0 &&
-            flaws.map((flaw: { title?: string; quote?: string; analysis?: string }, i) => {
+            flaws.map((flaw: { title?: string; quote?: string; analysis?: string }, i: number) => {
               const currentVote = votes[i];
               const isSubmitting = submittingIndex === i;
               const flawTitle = flaw?.title ?? `坑点${i + 1}`;
@@ -1205,7 +1205,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
             </h3>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              {alternatives.map((alt: { productName?: string; price?: string; advantage?: string }, i) => (
+              {alternatives.map((alt: { productName?: string; price?: string; advantage?: string }, i: number) => (
                 <div
                   key={i}
                   className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-5 transition-shadow hover:shadow-sm"
@@ -1379,7 +1379,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i) => {
+                  {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i: number) => {
                     const s = typeof item?.score === 'number' ? item.score : null;
                     const c = s !== null ? scoreColor(s) : null;
                     return (
@@ -1420,7 +1420,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
 
               {/* 移动端卡片 */}
               <div className="space-y-3 sm:hidden">
-                {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i) => {
+                {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i: number) => {
                   const s =
                     typeof item?.score === 'number' ? item.score : null;
                   const c = s !== null ? scoreColor(s) : null;
