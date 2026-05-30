@@ -221,7 +221,7 @@ export default function HomePage() {
     let cancelled = false;
     async function fetchTrending() {
       try {
-        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/trending`);
+        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://ai-avoid-pit.793309184.workers.dev'}/api/trending`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!cancelled && data.keywords?.length > 0) {
@@ -244,7 +244,7 @@ export default function HomePage() {
     let cancelled = false;
     async function fetchExpose() {
       try {
-        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/expose?limit=4`);
+        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://ai-avoid-pit.793309184.workers.dev'}/api/expose?limit=4`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!cancelled && data.posts?.length > 0) {
