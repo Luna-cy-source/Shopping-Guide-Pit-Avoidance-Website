@@ -277,7 +277,7 @@ export default function HomePage() {
     if (!q) return;
     addHistory(q);
     setIsLoading(true);
-    router.push(`/report/${encodeURIComponent(q)}`);
+    router.push(`/report?q=${encodeURIComponent(q)}`);
   };
 
   const handleSubmit = (e: FormEvent) => {

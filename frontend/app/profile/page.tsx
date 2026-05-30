@@ -196,7 +196,7 @@ export default function ProfilePage() {
                     >
                       <button
                         type="button"
-                        onClick={() => router.push(`/report/${encodeURIComponent(item.query)}`)}
+                        onClick={() => router.push(`/report?q=${encodeURIComponent(item.query)}`)}
                         className="font-medium"
                       >
                         {item.query}

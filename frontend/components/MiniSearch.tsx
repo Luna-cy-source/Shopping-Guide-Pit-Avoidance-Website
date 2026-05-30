@@ -16,7 +16,7 @@ export default function MiniSearch() {
         const keyword = input?.value.trim();
         if (keyword) {
           addHistory(keyword);
-          window.location.href = `/report/${encodeURIComponent(keyword)}`;
+          window.location.href = `/report?q=${encodeURIComponent(keyword)}`;
         }
       }}
     >

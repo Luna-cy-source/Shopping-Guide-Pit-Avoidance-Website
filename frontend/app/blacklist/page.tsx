@@ -207,7 +207,7 @@ export default function BlacklistPage() {
                 <div className="mb-4 flex flex-wrap items-baseline gap-2.5">
                   <button
                     type="button"
-                    onClick={() => router.push(`/report/${encodeURIComponent(item.productName)}`)}
+                    onClick={() => router.push(`/report?q=${encodeURIComponent(item.productName)}`)}
                     className="text-left text-base font-bold text-slate-900 transition-colors hover:text-red-600 sm:text-lg"
                     title={`查看「${item.productName}」检测报告`}
                   >
