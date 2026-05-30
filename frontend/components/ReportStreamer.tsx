@@ -853,7 +853,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
                     细分型号透视
                   </h4>
                   <div className="space-y-1.5">
-                    {object.productVariants.map((v, i) => (
+                    {object.productVariants.map((v: { variant_name: string; variant_value: string }, i: number) => (
                       <div
                         key={i}
                         className="flex items-center justify-between rounded-md bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-100/60"
@@ -1065,7 +1065,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           )}
 
           {flaws.length > 0 &&
-            flaws.map((flaw, i) => {
+            flaws.map((flaw: { title?: string; quote?: string; analysis?: string }, i) => {
               const currentVote = votes[i];
               const isSubmitting = submittingIndex === i;
               const flawTitle = flaw?.title ?? `坑点${i + 1}`;
@@ -1205,7 +1205,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
             </h3>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              {alternatives.map((alt, i) => (
+              {alternatives.map((alt: { productName?: string; price?: string; advantage?: string }, i) => (
                 <div
                   key={i}
                   className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-5 transition-shadow hover:shadow-sm"
@@ -1379,7 +1379,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {comparisons.map((item, i) => {
+                  {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i) => {
                     const s = typeof item?.score === 'number' ? item.score : null;
                     const c = s !== null ? scoreColor(s) : null;
                     return (
@@ -1420,7 +1420,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
 
               {/* 移动端卡片 */}
               <div className="space-y-3 sm:hidden">
-                {comparisons.map((item, i) => {
+                {comparisons.map((item: { productName?: string; priceRange?: string; mainFlaw?: string; score?: number }, i) => {
                   const s =
                     typeof item?.score === 'number' ? item.score : null;
                   const c = s !== null ? scoreColor(s) : null;
