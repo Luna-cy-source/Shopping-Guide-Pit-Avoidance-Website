@@ -239,7 +239,7 @@ export default function UsedCheckPage() {
   const [description, setDescription] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://ai-avoid-pit.793309184.workers.dev'}/api/search`,
+    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/search`,
     schema: LLMResponseSchema,
   });
 

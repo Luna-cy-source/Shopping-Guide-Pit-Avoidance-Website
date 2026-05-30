@@ -304,7 +304,7 @@ export default function ComparePage() {
   const [localResult, setLocalResult] = useState<CompareResult | null>(null);
   const [isLocalMode, setIsLocalMode] = useState(false);
   const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://ai-avoid-pit.793309184.workers.dev'}/api/search`,
+    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/search`,
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);

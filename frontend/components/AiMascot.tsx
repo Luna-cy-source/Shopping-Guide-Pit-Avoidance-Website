@@ -174,7 +174,7 @@ export default function AiMascot() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://ai-avoid-pit.793309184.workers.dev'}/api/search`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://wq.abrdns.eu.cc'}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text }),
