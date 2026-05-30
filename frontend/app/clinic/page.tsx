@@ -64,16 +64,64 @@ function EmptyState() {
 /* ============================================
    主组件
    ============================================ */
+/* ============================================
+   离线兜底：AI 不可用时生成本地推荐结果
+   ============================================ */
+function generateLocalClinicResult(query: string) {
+  const hash = query.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const seed = (hash % 100) + 1;
+  return {
+    intent: 'recommend' as const,
+    userProfile: `用户预算约 ¥${(seed * 80 + 500).toLocaleString()}，追求性价比，注重实用性和品质的平衡`,
+    recommendations: [
+      {
+        productName: `${query} 推荐款 A`,
+        score: 6 + (seed % 4),
+        priceRange: `¥${(seed * 50 + 800).toLocaleString()} - ¥${(seed * 100 + 2000).toLocaleString()}`,
+        reason: '综合性能均衡，口碑稳定，适合大多数使用场景。在同类产品中性价比表现突出，售后服务体系完善。',
+        compromise: '部分高端功能缺失，外观设计偏保守，品牌溢价相对较低但品控偶尔有波动。',
+      },
+      {
+        productName: `${query} 推荐款 B`,
+        score: 5 + (seed % 3),
+        priceRange: `¥${(seed * 30 + 400).toLocaleString()} - ¥${(seed * 60 + 1200).toLocaleString()}`,
+        reason: '入门门槛低，基础功能齐全，适合预算有限或初次尝试的用户群体。',
+        compromise: '材质和做工一般，长期使用的耐用性存疑，升级空间有限。',
+      },
+      {
+        productName: `${query} 进阶推荐`,
+        score: 7 + (seed % 3),
+        priceRange: `¥${(seed * 100 + 2000).toLocaleString()} - ¥${(seed * 150 + 4500).toLocaleString()}`,
+        reason: '旗舰体验，各项指标领先，适合对品质有较高要求且预算充足的用户。',
+        compromise: '价格溢价明显，部分功能日常用不到，存在"买得起用不全"的可能。',
+      },
+    ],
+  };
+}
+
 export default function ClinicPage() {
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState(500);          // 步骤6：预算滑块
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [followUpStep, setFollowUpStep] = useState(0); // 步骤7：AI追问（0=未开始，1-3=追问中，4=完成）
   const [followUpAnswers, setFollowUpAnswers] = useState<string[]>([]);
-  const { object, submit, isLoading, error, stop } = experimental_useObject({
+  // 离线兜底状态
+  const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalClinicResult> | null>(null);
+  const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
     api: apiUrl('/api/search'),
     schema: LLMResponseSchema,
+    onError: (err) => {
+      const msg = err?.message || String(err);
+      console.error('[Clinic] AI 请求失败:', msg);
+      if ((msg.includes('fetch') || msg.includes('network') || msg.includes('Failed') ||
+           msg.includes('ECONNREFUSED') || msg.includes('timeout') ||
+           msg.includes('Not Found') || msg.includes('404')) && !localResult) {
+        setLocalResult(generateLocalClinicResult(submittedQuery || description));
+      }
+    },
   });
+  // 合并：优先本地兜底，其次 AI 返回
+  const object = localResult || aiObject;
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -108,6 +156,7 @@ ${followUpAnswers.length > 0 ? `\n追问回答：${followUpAnswers.map((a, i) =>
     submit({ query: prompt });
     setFollowUpStep(0);
     setFollowUpAnswers([]);
+    setLocalResult(null);
   };
 
   // 步骤7：AI追问问题池
@@ -426,8 +475,17 @@ ${followUpAnswers.length > 0 ? `\n追问回答：${followUpAnswers.map((a, i) =>
         </div>
       )}
 
-      {/* ===== 错误提示 ===== */}
-      {error && !hasResult && (
+      {/* ===== 离线兜底警告横幅 ===== */}
+      {localResult && (
+        <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+          <p className="text-xs font-medium text-amber-700">
+            ⚠️ AI 服务暂时不可用，当前展示的是基于通用消费经验的模拟推荐，仅供参考。
+          </p>
+        </div>
+      )}
+
+      {/* ===== 错误提示（仅无离线数据时显示） ===== */}
+      {error && !hasResult && !localResult && (
         <div className="mt-8 w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
           <p className="text-sm font-semibold text-red-700">分析失败</p>
           <p className="mt-1 text-xs text-red-500">{error.message || '未知错误，请稍后重试'}</p>

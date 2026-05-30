@@ -236,13 +236,55 @@ function ScamCards({ routines }: { routines: { title: string; routine: string; c
 /* ============================================
    主组件
    ============================================ */
+/* ============================================
+   离线兜底：AI 不可用时生成本地鉴定结果
+   ============================================ */
+function generateLocalUsedCheckResult(query: string) {
+  const hash = query.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const seed = (hash % 100) + 1;
+  return {
+    intent: 'used_market' as const,
+    productName: query,
+    riskLevel: (seed % 3 === 0 ? '极高' : seed % 3 === 1 ? '中等' : '低') as '极高' | '中等' | '低',
+    riskSummary: `「${query}」在二手市场流通量较大，但存在翻新机、组装机冒充原装的风险。建议重点查验序列号一致性、电池健康度、屏幕显示异常等关键指标。`,
+    scamRoutines: [
+      { title: '"全新未拆封"套路', routine: '卖家声称"全新仅拆封"，实际可能是退换货或翻新机重新塑封', counterMeasure: '要求提供购买凭证、开箱视频，检查包装内是否有非原厂配件' },
+      { title: '"急用钱贱卖"话术', routine: '营造紧迫感，声称急需用钱所以低价出手，掩盖商品实际问题', counterMeasure: '不因价格过低而放松验机标准，反而应更仔细检查各项功能' },
+      { title: '"当面交易"陷阱', routine: '约在嘈杂公共场所见面，利用环境压力让你匆忙验机', counterMeasure: '选择安静明亮场所，预留充足验机时间（至少30分钟），可录音留存证据' },
+    ],
+    inspectionChecklist: [
+      { step: '核对序列号（IMEI/序列号）', detail: '进入系统设置查看序列号，与包装盒、保修卡上的号码三方一致。登录苹果/三星等官网查询保修状态和激活日期。' },
+      { step: '外观全面检查', detail: '在强光下检查机身四周有无划痕、磕碰、掉漆。特别注意接口处、边框转角等易损部位，这些地方最暴露使用痕迹。' },
+      { step: '屏幕检测', detail: '全屏切换纯白/纯黑/纯色背景，检查坏点、漏光、色斑。用手指轻按屏幕确认无触控失灵区域，测试多点触控是否正常。' },
+      { step: '电池健康度测试', detail: '查看设置中的电池健康百分比（iPhone低于85%需谨慎）。记录满电到关机的实际使用时长，对比官方标称数据。' },
+      { step: '摄像头与传感器测试', detail: '前后摄像头分别拍照录像，检查对焦速度、成像清晰度、有无噪点或模糊。测试人脸解锁/指纹识别响应速度。' },
+      { step: '接口与按键测试', detail: '逐一测试充电口、耳机孔、Type-C口插拔是否顺滑。每个物理按键反复按压确认回弹手感正常无异响。' },
+      { step: '网络与通信测试', detail: '插入SIM卡测试通话质量、4G/5G信号稳定性。连接WiFi测试网速，开启蓝牙配对设备验证无线功能。' },
+      { step: '恢复出厂设置后重启', detail: '当面执行恢复出厂设置（抹除所有数据），观察重启过程是否正常。这能清除可能存在的隐藏恶意软件。' },
+    ],
+  };
+}
+
 export default function UsedCheckPage() {
   const [description, setDescription] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const { object, submit, isLoading, error, stop } = experimental_useObject({
+  // 离线兜底状态
+  const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalUsedCheckResult> | null>(null);
+  const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
     api: apiUrl('/api/search'),
     schema: LLMResponseSchema,
+    onError: (err) => {
+      const msg = err?.message || String(err);
+      console.error('[UsedCheck] AI 请求失败:', msg);
+      if ((msg.includes('fetch') || msg.includes('network') || msg.includes('Failed') ||
+           msg.includes('ECONNREFUSED') || msg.includes('timeout') ||
+           msg.includes('Not Found') || msg.includes('404')) && !localResult) {
+        setLocalResult(generateLocalUsedCheckResult(submittedQuery || description));
+      }
+    },
   });
+  // 合并：优先本地兜底，其次 AI 返回
+  const object = localResult || aiObject;
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const hasResult = object?.intent === 'used_market';
@@ -269,6 +311,7 @@ export default function UsedCheckPage() {
 
     submit({ query: prompt });
     setSubmittedQuery(trimmed);
+    setLocalResult(null);
   };
 
   const renderResult = () => {
@@ -402,8 +445,17 @@ export default function UsedCheckPage() {
         </div>
       )}
 
-      {/* ===== 错误提示 ===== */}
-      {error && !hasResult && (
+      {/* ===== 离线兜底警告横幅 ===== */}
+      {localResult && (
+        <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+          <p className="text-xs font-medium text-amber-700">
+            ⚠️ AI 服务暂时不可用，当前展示的是基于通用二手交易经验的模拟鉴定，仅供参考。
+          </p>
+        </div>
+      )}
+
+      {/* ===== 错误提示（仅无离线数据时显示） ===== */}
+      {error && !hasResult && !localResult && (
         <div className="mt-8 w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
           <p className="text-sm font-semibold text-red-700">鉴定失败</p>
           <p className="mt-1 text-xs text-red-500">{error.message || '未知错误，请稍后重试'}</p>

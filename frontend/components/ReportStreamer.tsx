@@ -542,7 +542,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       const isServerOrNetworkError =
         msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
         msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
-        msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed');
+        msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed') ||
+        msg.includes('Not Found') || msg.includes('404');
       if (isServerOrNetworkError && !localReport) {
         setLocalReport(generateLocalReport(query));
       }

@@ -243,131 +243,23 @@ ${context}
 
 请你严格按照系统提示词的【核心原则】要求，对用户查询进行深度分析。最终输出必须是纯 JSON 格式，严格匹配我定义的 Schema，不要输出任何 Markdown 包裹（不要 \`\`\`json）。`;
 
-    // ---- 5. 双模型：Workers AI 优先，失败 → DeepSeek 兜底 ----
+    // ---- 5. 双模型：DeepSeek 优先（中文更快更准），失败 → Workers AI 兜底 ----
     let rawText = '';
     let usedFallback = false;
 
     // ----------------------------------------------------------------
-    // 5.1 Workers AI (Llama 3.3 70B) — 速度快，同机房
-    // ----------------------------------------------------------------
-    const tryWorkersAI = async (): Promise<Response> => {
-      const aiResponse = await c.env.AI.run(
-        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-        {
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: 8192,
-          response_format: { type: 'json_object' },
-        },
-      ) as { response?: string };
-
-      rawText = aiResponse.response ?? '';
-      if (!rawText) throw new Error('empty_response');
-
-      console.log('[Workers AI] 响应前800字符:', rawText.slice(0, 800));
-
-      // 清洗 markdown / 提取 JSON
-      rawText = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-      const firstBrace = rawText.indexOf('{');
-      const lastBrace = rawText.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        rawText = rawText.slice(firstBrace, lastBrace + 1);
-      }
-
-      // JSON.parse — 失败时尝试自动修复截断
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch (parseErr) {
-        // 自动修复：统计括号不平衡，补全缺失的闭合括号
-        let fixed = rawText;
-        const openBraces = (fixed.match(/\{/g) || []).length;
-        const closeBraces = (fixed.match(/\}/g) || []).length;
-        const openBrackets = (fixed.match(/\[/g) || []).length;
-        const closeBrackets = (fixed.match(/\]/g) || []).length;
-        for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
-        for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
-        // 如果最后一个字符是逗号或引号，可能需要额外处理
-        if (fixed.endsWith(',')) fixed = fixed.slice(0, -1) + '}';
-        try {
-          parsed = JSON.parse(fixed);
-          console.log('[Workers AI] JSON 截断已自动修复');
-        } catch {
-          console.error('[Workers AI] JSON 解析失败，原始文本:', rawText.slice(0, 1200));
-          throw parseErr;
-        }
-      }
-
-      // 图片 URL 替换（代理 + 缓存预热）
-      const imageUrlsToCache: string[] = [];
-      rawText = rawText.replace(
-        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
-        (match, key: string, url: string) => {
-          try {
-            const decoded = url.replace(/\\(.)/g, '$1');
-            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-              imageUrlsToCache.push(decoded);
-              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
-            }
-          } catch { /* noop */ }
-          return match;
-        },
-      );
-
-      // 重新解析替换后的 JSON，确保返回的图片 URL 是代理后的
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        console.warn('[Workers AI] 图片 URL 替换后 JSON 解析失败，使用原解析结果');
-      }
-
-      // 后台预热图片缓存
-      c.executionCtx.waitUntil(
-        (async () => {
-          const uniqueUrls = [...new Set(imageUrlsToCache)];
-          if (uniqueUrls.length === 0) return;
-          await Promise.allSettled(
-            uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
-          );
-        })(),
-      );
-
-      // NDJSON 流：ai@^4 experimental_useObject 使用 ObjectStream 协议
-      // 每行必须是 { v: <完整对象> } 格式
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
-    };
-
-    // ----------------------------------------------------------------
-    // 5.2 DeepSeek (generateObject) — 质量更好，做兜底
-    // 使用 generateObject 获取完整结构化输出，再以 NDJSON 格式返回，
-    // 兼容前端 ai@^4 的 experimental_useObject（基于 ObjectStream.fromResponse）
+    // 5.1 DeepSeek (generateObject) — 中文场景首选，速度快，质量高
     // ----------------------------------------------------------------
     const tryDeepSeek = async (): Promise<Response> => {
-      console.log('[Fallback] 切换到 DeepSeek...');
+      console.log('[DeepSeek] 开始生成...');
 
       const deepseek = createDeepSeek({
         apiKey: c.env.DEEPSEEK_API_KEY,
         baseURL: c.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
       });
 
-      // 35s 超时
-      const DS_TIMEOUT = 35_000;
+      // 25s 超时（降低从35s）
+      const DS_TIMEOUT = 25_000;
       const result = await Promise.race([
         generateObject({
           model: deepseek('deepseek-chat'),
@@ -375,7 +267,7 @@ ${context}
           system: SYSTEM_PROMPT,
           prompt: userPrompt,
           temperature: 0.7,
-          maxTokens: 4096,
+          maxTokens: 2048,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('LLM_TIMEOUT')), DS_TIMEOUT),
@@ -423,42 +315,134 @@ ${context}
         },
       });
 
-      usedFallback = true;
       return new Response(stream, {
         status: 200,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     };
 
+    // ----------------------------------------------------------------
+    // 5.2 Workers AI (Llama 3.3 70B) — DeepSeek 失败时的兜底方案
+    // ----------------------------------------------------------------
+    const tryWorkersAI = async (): Promise<Response> => {
+      console.log('[Workers AI] DeepSeek 失败，切换到 Workers AI 兜底...');
+
+      const WA_TIMEOUT = 20_000;
+      const aiResponse = await Promise.race([
+        c.env.AI.run(
+          '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          {
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: 4096,
+            response_format: { type: 'json_object' },
+          },
+        ) as Promise<{ response?: string }>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM_TIMEOUT')), WA_TIMEOUT),
+        ),
+      ]);
+
+      rawText = aiResponse.response ?? '';
+      if (!rawText) throw new Error('empty_response');
+
+      console.log('[Workers AI] 响应前800字符:', rawText.slice(0, 800));
+
+      rawText = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        rawText = rawText.slice(firstBrace, lastBrace + 1);
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (parseErr) {
+        let fixed = rawText;
+        const openBraces = (fixed.match(/\{/g) || []).length;
+        const closeBraces = (fixed.match(/\}/g) || []).length;
+        const openBrackets = (fixed.match(/\[/g) || []).length;
+        const closeBrackets = (fixed.match(/\]/g) || []).length;
+        for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+        for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+        if (fixed.endsWith(',')) fixed = fixed.slice(0, -1) + '}';
+        try {
+          parsed = JSON.parse(fixed);
+        } catch {
+          console.error('[Workers AI] JSON 解析失败，原始文本:', rawText.slice(0, 1200));
+          throw parseErr;
+        }
+      }
+
+      const imageUrlsToCache: string[] = [];
+      rawText = rawText.replace(
+        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
+        (match, key: string, url: string) => {
+          try {
+            const decoded = url.replace(/\\(.)/g, '$1');
+            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+              imageUrlsToCache.push(decoded);
+              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
+            }
+          } catch { /* noop */ }
+          return match;
+        },
+      );
+
+      try { parsed = JSON.parse(rawText); } catch {
+        console.warn('[Workers AI] 图片 URL 替换后 JSON 解析失败，使用原解析结果');
+      }
+
+      c.executionCtx.waitUntil(
+        (async () => {
+          const uniqueUrls = [...new Set(imageUrlsToCache)];
+          if (uniqueUrls.length === 0) return;
+          await Promise.allSettled(
+            uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
+          );
+        })(),
+      );
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    };
+
+    // ---- 调用：DeepSeek 优先 → Workers AI 兜底 ----
     try {
-      return await tryWorkersAI();
+      return await tryDeepSeek();
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.log(`[Workers AI] 失败 (${errMsg.slice(0, 100)})，切换到 DeepSeek 兜底...`);
+      console.log(`[DeepSeek] 失败 (${errMsg.slice(0, 100)})，切 Workers AI...`);
 
-      // Workers AI 超时 / 空响应 / JSON 解析异常 → 一律切 DeepSeek
       try {
-        return await tryDeepSeek();
-      } catch (dsErr) {
-        const dsMsg = dsErr instanceof Error ? dsErr.message : String(dsErr);
-        console.error('[DeepSeek] 兜底也失败:', dsMsg);
+        return await tryWorkersAI();
+      } catch (waErr) {
+        const waMsg = waErr instanceof Error ? waErr.message : String(waErr);
+        console.error('[Workers AI] 也失败:', waMsg);
 
-        if (dsMsg === 'LLM_TIMEOUT') {
-          return c.json(
-            { error: 'AI 分析耗时过长，请搜索更具体的商品名称后重试。', code: 'DUAL_MODEL_TIMEOUT' },
-            504,
-          );
+        if (errMsg === 'LLM_TIMEOUT' || waMsg === 'LLM_TIMEOUT') {
+          return c.json({ error: 'AI 分析耗时过长，请简化搜索词后重试。', code: 'TIMEOUT' }, 504);
         }
-        if (dsMsg.includes('401') || dsMsg.includes('403')) {
-          return c.json(
-            { error: 'AI 服务认证失败，正在紧急修复中。', code: 'LLM_AUTH_ERROR' },
-            502,
-          );
+        if (/40[13]/.test(errMsg) || /40[13]/.test(waMsg)) {
+          return c.json({ error: 'AI 服务认证异常，正在修复。', code: 'AUTH_ERROR' }, 502);
         }
-        return c.json(
-          { error: 'AI 分析服务暂时不可用，请稍后重试。', code: 'DUAL_MODEL_FAILED' },
-          500,
-        );
+        return c.json({ error: 'AI 暂不可用，请稍后重试。', code: 'FAILED' }, 500);
       }
     }
   } catch (err) {

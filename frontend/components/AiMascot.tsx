@@ -208,7 +208,7 @@ export default function AiMascot() {
             const obj = JSON.parse(trimmed);
             // 提取摘要信息用于聊天展示
             if (obj && typeof obj === 'object' && 'intent' in obj) {
-              const productName = obj.productName || obj.categoryName || query || '';
+              const productName = obj.productName || obj.categoryName || text || '';
               const score = typeof obj.score === 'number' ? ` ${obj.score}/10分` : '';
               const priceInfo = obj.priceAnalysis || obj.overview || '';
               fullText = `「${productName}」${score}\n${priceInfo}`;

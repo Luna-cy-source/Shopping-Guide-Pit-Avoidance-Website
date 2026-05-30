@@ -57,29 +57,34 @@ async function d1CacheSearch(
   const hits: string[] = [];
   const seen = new Set<string>();
 
-  for (const key of modelKeys) {
-    try {
-      const result = await db
-        .prepare(
-          `SELECT response_json FROM search_cache
-           WHERE response_json LIKE ?1
-           ORDER BY created_at DESC
-           LIMIT 3`,
-        )
-        .bind(`%${key}%`)
-        .all();
-
-      if (result.results) {
-        for (const row of result.results as { response_json: string }[]) {
-          const json = row.response_json;
-          if (json && !seen.has(json.slice(0, 80))) {
-            seen.add(json.slice(0, 80));
-            hits.push(json);
-          }
-        }
+  // 并行查询所有型号，而非串行逐个
+  const results = await Promise.all(
+    modelKeys.map(async (key) => {
+      try {
+        const result = await db
+          .prepare(
+            `SELECT response_json FROM search_cache
+             WHERE response_json LIKE ?1
+             ORDER BY created_at DESC
+             LIMIT 3`,
+          )
+          .bind(`%${key}%`)
+          .all();
+        return (result.results as { response_json: string }[]) ?? [];
+      } catch (err) {
+        console.error(`[D1缓存检索] 型号 "${key}" 查询失败:`, err);
+        return [];
       }
-    } catch (err) {
-      console.error(`[D1缓存检索] 型号 "${key}" 查询失败:`, err);
+    }),
+  );
+
+  for (const rows of results) {
+    for (const row of rows) {
+      const json = row.response_json;
+      if (json && !seen.has(json.slice(0, 80))) {
+        seen.add(json.slice(0, 80));
+        hits.push(json);
+      }
     }
   }
 
@@ -96,27 +101,32 @@ async function d1LogsSearch(
 ): Promise<string[]> {
   const similarQueries = new Set<string>();
 
-  for (const key of modelKeys) {
-    try {
-      const result = await db
-        .prepare(
-          `SELECT DISTINCT query_text FROM search_logs
-           WHERE query_text LIKE ?1
-           ORDER BY created_at DESC
-           LIMIT 5`,
-        )
-        .bind(`%${key}%`)
-        .all();
-
-      if (result.results) {
-        for (const row of result.results as { query_text: string }[]) {
-          if (row.query_text) {
-            similarQueries.add(row.query_text);
-          }
-        }
+  // 并行查询所有型号
+  const results = await Promise.all(
+    modelKeys.map(async (key) => {
+      try {
+        const result = await db
+          .prepare(
+            `SELECT DISTINCT query_text FROM search_logs
+             WHERE query_text LIKE ?1
+             ORDER BY created_at DESC
+             LIMIT 5`,
+          )
+          .bind(`%${key}%`)
+          .all();
+        return (result.results as { query_text: string }[]) ?? [];
+      } catch (err) {
+        console.error(`[D1日志检索] 型号 "${key}" 查询失败:`, err);
+        return [];
       }
-    } catch (err) {
-      console.error(`[D1日志检索] 型号 "${key}" 查询失败:`, err);
+    }),
+  );
+
+  for (const rows of results) {
+    for (const row of rows) {
+      if (row.query_text) {
+        similarQueries.add(row.query_text);
+      }
     }
   }
 
@@ -297,14 +307,11 @@ export async function retrieveContext(
     `[混合检索] 提取到 ${modelKeys.length} 个型号关键词: ${modelKeys.join(', ') || '(无)'}`,
   );
 
-  // ── 步骤 2：D1 精准关键词检索 ──
-  // 2a. search_cache 缓存匹配（LIKE %型号% → 优先返回之前分析过的同类商品结果）
-  const d1CacheResults =
-    modelKeys.length > 0 ? await d1CacheSearch(db, modelKeys) : [];
-
-  // 2b. search_logs 历史查询（发现同类搜索记录）
-  const historicalQueries =
-    modelKeys.length > 0 ? await d1LogsSearch(db, modelKeys) : [];
+  // ── 步骤 2：D1 精准关键词检索（并行） ──
+  const [d1CacheResults, historicalQueries] = await Promise.all([
+    modelKeys.length > 0 ? d1CacheSearch(db, modelKeys) : Promise.resolve([]),
+    modelKeys.length > 0 ? d1LogsSearch(db, modelKeys) : Promise.resolve([]),
+  ]);
 
   // 2c. 从缓存 JSON 中提取摘要
   const d1Summaries = d1CacheResults
