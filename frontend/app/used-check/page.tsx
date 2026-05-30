@@ -2,16 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { experimental_useObject } from 'ai/react';
-import { LLMResponseSchema } from '../../lib/schema';
+import { LLMResponseSchema, LLMResponse } from '../../lib/schema';
 import Link from 'next/link';
 
 /* ============================================
-   类型：从前端 Schema 推导
+   类型：从 Schema 直接推导
    ============================================ */
-type UsedMarketResult = Extract<
-  NonNullable<ReturnType<typeof experimental_useObject>['object']>,
-  { intent: 'used_market' }
->;
+type UsedMarketResult = Extract<LLMResponse, { intent: 'used_market' }>;
 
 /* ============================================
    风险等级色系
@@ -274,7 +271,7 @@ export default function UsedCheckPage() {
   };
 
   const renderResult = () => {
-    const data = (object as unknown) as UsedMarketResult | undefined;
+    const data = object as UsedMarketResult | undefined;
     if (!data || data.intent !== 'used_market') return null;
 
     const riskStyle = RISK_STYLES[data.riskLevel] ?? RISK_STYLES['中等'];
