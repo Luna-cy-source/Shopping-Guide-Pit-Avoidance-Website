@@ -357,7 +357,9 @@ export default function ComparePage() {
   };
 
   const hasResult = object?.intent === 'compare' || isLocalMode;
-  const compareData = isLocalMode ? localResult : (object?.intent === 'compare' ? object : null);
+  const compareData = isLocalMode
+    ? localResult
+    : (object?.intent === 'compare' ? (object as CompareResult) : null);
 
   return (
     <main className="flex flex-1 flex-col items-center px-4 pt-16">
