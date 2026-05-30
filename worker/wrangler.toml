@@ -3,33 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 node_compat = true
 
-# ===== D1 数据库绑定 =====
-[[d1_databases]]
-binding = "DB"
-database_name = "ai-avoid-pit-db"
-database_id = "your-d1-database-id"
-
-# ===== Vectorize 向量数据库绑定 =====
-[[vectorize]]
-binding = "KNOWLEDGE_VECTOR"
-index_name = "ai-avoid-pit-vector"
-
-# ===== R2 图片缓存桶 =====
-[[r2_buckets]]
-binding = "IMAGE_CACHE"
-bucket_name = "ai-avoid-pit-images"
-preview_bucket_name = "ai-avoid-pit-images-preview"
-
-# ===== Workers AI 绑定 =====
-[ai]
-binding = "AI"
-
-# ===== Cron Triggers 定时任务 =====
-# 每天凌晨 3:00 (UTC+8 约 11:00 UTC，取决于部署区域)
-# 自动扫描高频搜索但知识库未覆盖的商品，写入待爬取队列
-[triggers]
-crons = ["0 3 * * *"]
-
 # ===== 环境变量 =====
 [vars]
 DEEPSEEK_API_KEY = "sk-165600cb62384672a14bfc5712057c9d"
