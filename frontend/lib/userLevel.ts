@@ -124,16 +124,16 @@ export const LEVELS: LevelConfig[] = [
 
 /* ---------- 经验值动作 ---------- */
 export const XP_ACTIONS = {
-  SEARCH: { key: 'search', xp: 5, label: '搜索商品', cooldown: 5000 },
-  VIEW_REPORT: { key: 'view_report', xp: 10, label: '查看检测报告' },
-  COMPARE: { key: 'compare', xp: 15, label: '使用对比功能' },
-  VIEW_BLACKLIST: { key: 'view_blacklist', xp: 5, label: '查看黑榜' },
-  SUBMIT_EXPOSE: { key: 'submit_expose', xp: 25, label: '提交排雷曝光' },
-  DAILY_LOGIN: { key: 'daily_login', xp: 10, label: '每日登录' },
-  BOOKMARK: { key: 'bookmark', xp: 3, label: '收藏商品' },
-  SHARE: { key: 'share', xp: 8, label: '分享报告' },
-  USE_CLINIC: { key: 'use_clinic', xp: 12, label: '使用选品诊所' },
-  CHECK_USED: { key: 'check_used', xp: 10, label: '使用二手防坑' },
+	SEARCH: { key: 'search', xp: 5, label: '搜索商品', cooldown: 5000 },
+	VIEW_REPORT: { key: 'view_report', xp: 10, label: '查看检测报告', cooldown: 0 },
+	COMPARE: { key: 'compare', xp: 15, label: '使用对比功能', cooldown: 0 },
+	VIEW_BLACKLIST: { key: 'view_blacklist', xp: 5, label: '查看黑榜', cooldown: 0 },
+	SUBMIT_EXPOSE: { key: 'submit_expose', xp: 25, label: '提交排雷曝光', cooldown: 0 },
+	DAILY_LOGIN: { key: 'daily_login', xp: 10, label: '每日登录', cooldown: 0 },
+	BOOKMARK: { key: 'bookmark', xp: 3, label: '收藏商品', cooldown: 0 },
+	SHARE: { key: 'share', xp: 8, label: '分享报告', cooldown: 0 },
+	USE_CLINIC: { key: 'use_clinic', xp: 12, label: '使用选品诊所', cooldown: 0 },
+	CHECK_USED: { key: 'check_used', xp: 10, label: '使用二手防坑', cooldown: 0 },
 } as const;
 
 export type XPActionKey = keyof typeof XP_ACTIONS;
