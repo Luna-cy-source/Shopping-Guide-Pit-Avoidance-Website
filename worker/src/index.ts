@@ -337,12 +337,12 @@ ${context}
         })(),
       );
 
-      // NDJSON 流：每一行是当前的完整 JSON 对象状态
-      // 格式兼容前端 ai@^4 experimental_useObject（基于 ObjectStream.fromResponse）
+      // NDJSON 流：ai@^4 experimental_useObject 使用 ObjectStream 协议
+      // 每行必须是 { v: <完整对象> } 格式
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify(parsed) + '\n'));
+          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
           controller.close();
         },
       });
@@ -413,11 +413,12 @@ ${context}
         })(),
       );
 
-      // NDJSON 流：每一行是当前的完整 JSON 对象状态
+      // NDJSON 流：ai@^4 experimental_useObject 使用 ObjectStream 协议
+      // 每行必须是 { v: <完整对象> } 格式
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode(rawText + '\n'));
+          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
           controller.close();
         },
       });
