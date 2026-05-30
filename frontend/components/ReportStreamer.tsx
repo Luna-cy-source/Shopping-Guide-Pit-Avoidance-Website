@@ -710,7 +710,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           productImage={
             object.productImage as { url: string; alt: string } | undefined
           }
-          flaws={flaws.map((f) => ({
+          flaws={flaws.map((f: { title?: string; analysis?: string }) => ({
             title: f?.title ?? '',
             analysis: f?.analysis ?? '',
           }))}
