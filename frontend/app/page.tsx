@@ -502,7 +502,7 @@ export default function HomePage() {
           ) : (
             (exposeData && exposeData.length > 0 ? exposeData.map(mapExposePost) : FALLBACK_REPORTS).map((report, idx) => (
               <div
-                key={report.id ?? report.product}
+                key={`${report.product}-${idx}`}
                 className="group card-premium-interactive flex flex-col gap-3 p-5"
                 style={{ animationDelay: `${idx * 100}ms` }}
               >
