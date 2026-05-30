@@ -274,7 +274,7 @@ export default function UsedCheckPage() {
   };
 
   const renderResult = () => {
-    const data = object as UsedMarketResult | undefined;
+    const data = (object as unknown) as UsedMarketResult | undefined;
     if (!data || data.intent !== 'used_market') return null;
 
     const riskStyle = RISK_STYLES[data.riskLevel] ?? RISK_STYLES['中等'];
