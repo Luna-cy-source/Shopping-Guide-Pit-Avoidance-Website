@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^1.0.0",
-    "@clerk/clerk-react": "^4.39.0",
+    "@clerk/clerk-react": "^4.32.5",
     "ai": "^4.0.0",
     "echarts": "^5.5.0",
     "echarts-for-react": "^3.0.0",
