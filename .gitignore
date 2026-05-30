@@ -8,6 +8,7 @@ build/
 .next/
 .wrangler/
 out/
+functions/
 
 # 环境变量
 .env
