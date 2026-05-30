@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { streamObject } from 'ai';
+import { generateObject } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import type { Env } from './types';
 import {
@@ -32,10 +32,10 @@ app.use(
 // ============================================
 app.get('/', (c) => {
   const now = new Date().toISOString();
-  const uptime = process.uptime();
-  const hours = Math.floor(uptime / 3600);
-  const minutes = Math.floor((uptime % 3600) / 60);
-  const seconds = Math.floor(uptime % 60);
+  const uptimeMs = performance.now();
+  const hours = Math.floor(uptimeMs / 3600000);
+  const minutes = Math.floor((uptimeMs % 3600000) / 60000);
+  const seconds = Math.floor((uptimeMs % 60000) / 1000);
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -85,7 +85,7 @@ app.get('/', (c) => {
     </div>
     <div class="info-item">
       <div class="info-label">LLM 引擎</div>
-      <div class="info-value">DeepSeek</div>
+      <div class="info-value">Llama 3.3 70B (Workers AI)</div>
     </div>
     <div class="info-item">
       <div class="info-label">运行环境</div>
@@ -103,7 +103,7 @@ app.get('/', (c) => {
     <div class="endpoint">
       <span class="method get">GET</span>
       <span class="path">/api/health</span>
-      <span class="desc">健康检查（含 DeepSeek 探测）</span>
+      <span class="desc">健康检查</span>
     </div>
     <div class="endpoint">
       <span class="method get">GET</span>
@@ -155,88 +155,26 @@ app.get('/', (c) => {
 // ============================================
 const SYSTEM_PROMPT = `你是专业中立、真实靠谱、接地气的AI避坑导购专家。核心使命是帮普通用户避开消费套路、智商税。
 【核心原则】：
+- 避坑优先：优先拆解隐形短板、营销陷阱。
+- 客观中立：禁止恰饭，缺点必须直白点明。
+- 语言接地气：用大白话，不堆砌参数。
+- 绝对红线：禁止模棱两可，必须有明确判断。
 
-避坑优先：优先拆解隐形短板、营销陷阱。
+【输出要求 — 严格控制长度防止截断】：
+1. 每个字段精简扼要，严禁冗余展开。
+2. 图片：imageUrl 和 productImage.url，无图时均填"null"。
+3. SKU：skus 输出 2-3 个最常见配置即可。
+4. 参数透视 specsCheck：2-3 个核心虚标参数，简明对比。
+5. 雷达图 visData.flawRadar：5 个维度即可。
+6. 比价 priceReference：2-3 个平台活动价。
+7. 坑点 flaws：3-4 条核心坑点，每条控制在 50 字内。
+8. 替代品 alternatives：2 个即可。
+9. productVariants：3-4 个核心 SKU 维度。
+10. 禁止「因人而异」「建议根据自身需求」等空话。
 
-客观中立：禁止恰饭，缺点必须直白点明，不委婉、不回避。
+【格式要求】：
+输出必须是合法 JSON，不要 Markdown 代码块。`;
 
-语言接地气：用大白话，不堆砌晦涩参数。
-
-预算适配：坚持预算为王，不盲目推荐高价。
-
-绝对红线：禁止模棱两可，必须有明确判断；必须结合检索到的真实评价。
-
-【比价要求】：对于具体商品（intent=product），你必须在 priceReference 字段中输出该商品在各大电商平台的「常态活动价」估算值。基于你的知识库，给出京东、淘宝、拼多多等平台的实际可买到价格（不要列原价/建议零售价，要列活动/补贴后真实到手价）。如果某个平台确实缺少数据，可以跳过该平台。每个平台只需给出一个数字（单位元），可选附带 url。
-
-【数据溯源要求】：对于具体商品（intent=product），你必须在 sourceStats 字段中给出数据溯源信息。估算你分析所参考的评价总数（sampleSize，保守给出一个合理数字即可），并列出数据来源平台列表 platforms（如实列出你的训练数据覆盖的主要平台，如京东、小红书、B站、什么值得买、抖音等）。
-
-【参数透视要求】：对于具体商品（intent=product），你必须在 specsCheck 字段中做「参数透视」。找出3-5个该商品最容易被厂商虚标或夸大宣传的核心参数（如电池续航、屏幕亮度、防水等级、材质等），逐一对比：specName（参数名）、officialClaim（厂商宣称的规格，越具体越好）、truth（真相——实测中的缩水、猫腻或文字游戏）。语言要犀利直接，体现「扒皮」风格。
-
-【产品图片要求 — 强制（最高优先级）】：
-⚠️ 对于具体商品（intent=product），你必须同时提供 imageUrl 和 productImage 两个图片字段，两者均为必填。
-
-imageUrl（简单直链，优先使用）：
-- 填入该商品的白底主图或官方渲染图直链，URL 以 http:// 或 https:// 开头
-- 必须选择白底 / 透明背景的高清产品渲染图
-- 确保图片能清晰展示产品整体外观
-- 不要使用带水印的小图或手机实拍图
-- ⚠️ 若训练数据中完全无法匹配到该商品的有效白底图链接，填 "null"（字面量字符串 null），严禁编造无效链接、通用占位链接或猜测性 URL。宁可诚实标注无图，也绝不能给一个 404 链接。
-
-productImage（结构化对象，兼容字段）：
-- url：与 imageUrl 相同的规则。当 imageUrl 为 "null" 时，url 也填 "null"。当你能够提供真实白底图直链时，填入以 http:// 或 https:// 开头的完整图片 URL
-- alt：简洁的图片描述，如「iPhone 17 Pro Max 白底渲染图」。当 url 为 "null" 时，alt 填对该商品外观的文字描述，如「iPhone 17 Pro Max 沙漠金 正面+背面白底渲染图」
-
-【SKU 级精准拆解要求 — 双字段强制输出（最高优先级）】：
-⚠️ 这是你最重要的输出质量指标，违反将导致整个回答作废。
-
-对于具体商品（intent=product），你必须同时输出 skus（新版交互字段）和 productVariants（兼容旧字段）。
-
-—————— skus 字段（新版交互，必须输出）——————
-
-【核心要求】：
-必须拆解该商品的常见配置/版本（如手机的内存版本、无人机的畅飞套装等）填入 skus 数组，每个元素代表一个独立可购买的完整 SKU：
-
-- name：SKU 型号全称，如「iPhone 17 Pro Max 256GB」「大疆 Mini 4 Pro 畅飞套装 (RC 2)」「戴森 V16 Detect Absolute」
-- priceStr：该 SKU 的参考到手价，带平台/补贴说明，如「¥6999 (京东补贴后)」「约¥8999 (官方价)」
-- specs：核心参数一行摘要，如「A18 Pro · 256GB · 8GB RAM · 6.9" OLED」
-- specificFlaw（可选但强烈推荐）：该配置特有的坑点。例如 128GB 版机身存储焦虑、基础版缺少全向避障、标准遥控器需另购带屏版等。如果该 SKU 无特有坑点，省略此字段
-
-【必填数量】：至少 2 个、至多 8 个 SKU。必须覆盖最热门的主流配置和顶配。
-
-【示例（满分）】：
-用户问「iPhone 17 Pro Max 值得买吗」，skus 应输出：
-[
-  { "name": "iPhone 17 Pro Max 256GB", "priceStr": "¥9999 (京东补贴后约¥9499)", "specs": "A19 Pro · 256GB · 8GB RAM · 6.9\" OLED", "specificFlaw": "256GB 对重度用户可能不够，无法扩展存储" },
-  { "name": "iPhone 17 Pro Max 512GB", "priceStr": "¥11499 (京东补贴后约¥10899)", "specs": "A19 Pro · 512GB · 8GB RAM · 6.9\" OLED", "specificFlaw": "比 256GB 版贵 1500 元，性价比存疑" },
-  { "name": "iPhone 17 Pro Max 1TB", "priceStr": "¥13999 (官方价)", "specs": "A19 Pro · 1TB · 8GB RAM · 6.9\" OLED" }
-]
-
-—————— productVariants 字段（兼容旧版，仍须输出）——————
-请继续输出该商品各 SKU 维度的拆解。禁止笼统写「型号」「配置」等空泛词。
-
-【禁止行为】：
-- ❌ 禁止输出「型号: 大疆 Mini 4 Pro」这种笼统废话
-- ❌ 禁止使用空泛的维度名
-- ❌ 禁止编造不确定的配置值。如训练数据中无法确认，必须填「标准配置」或「未明确」
-
-【强制要求】：
-- ✔️ 维度名必须是可购买的 SKU 属性（机身套装、遥控器、存储、内存、颜色等）
-- ✔️ 你必须引用 Context 中的数据作为证据
-- ✔️ 至少输出 3 个、至多 8 个 SKU 维度
-
-【可视化数据要求 — 强制】：
-对于具体商品（intent=product），你必须在 visData 字段中输出结构化可视化数据，供前端雷达图等组件直接渲染。
-
-- visData.flawRadar（必填）：生成一个包含 5-7 个维度的槽点分布雷达图数据。
-  维度示例：续航拉胯、散热问题、做工瑕疵、参数虚标、溢价噱头、售后坑爹、品控不稳。
-  每个维度的分数为 0-10 的整数或一位小数，分数越高代表该维度的问题在用户评价中暴露得越严重。
-  必须基于真实评价和知识库中的用户反馈进行合理估算，禁止随意编造。
-  格式为对象：{ "维度名": 分数, ... }
-
-【禁止输出通用结论】：
-禁止输出「因人而异」「建议根据自身需求选择」等毫无信息量的通用结论。
-每个字段必须有具体、可量化的信息。
-`;
 
 // ============================================
 // POST /api/search — RAG 检索 + 流式输出
@@ -305,222 +243,222 @@ ${context}
 
 请你严格按照系统提示词的【核心原则】要求，对用户查询进行深度分析。最终输出必须是纯 JSON 格式，严格匹配我定义的 Schema，不要输出任何 Markdown 包裹（不要 \`\`\`json）。`;
 
-    // ---- 5. 步骤D & E：streamObject 流式调用大模型 + 图片 URL 代理替换 ----
-    // 内置超时保护 + 错误分类 + 优雅降级
-    try {
-      // 使用 Cloudflare 环境变量动态创建 DeepSeek provider 实例
+    // ---- 5. 双模型：Workers AI 优先，失败 → DeepSeek 兜底 ----
+    let rawText = '';
+    let usedFallback = false;
+
+    // ----------------------------------------------------------------
+    // 5.1 Workers AI (Llama 3.3 70B) — 速度快，同机房
+    // ----------------------------------------------------------------
+    const tryWorkersAI = async (): Promise<Response> => {
+      const aiResponse = await c.env.AI.run(
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        {
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 8192,
+          response_format: { type: 'json_object' },
+        },
+      ) as { response?: string };
+
+      rawText = aiResponse.response ?? '';
+      if (!rawText) throw new Error('empty_response');
+
+      console.log('[Workers AI] 响应前800字符:', rawText.slice(0, 800));
+
+      // 清洗 markdown / 提取 JSON
+      rawText = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        rawText = rawText.slice(firstBrace, lastBrace + 1);
+      }
+
+      // JSON.parse — 失败时尝试自动修复截断
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (parseErr) {
+        // 自动修复：统计括号不平衡，补全缺失的闭合括号
+        let fixed = rawText;
+        const openBraces = (fixed.match(/\{/g) || []).length;
+        const closeBraces = (fixed.match(/\}/g) || []).length;
+        const openBrackets = (fixed.match(/\[/g) || []).length;
+        const closeBrackets = (fixed.match(/\]/g) || []).length;
+        for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+        for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+        // 如果最后一个字符是逗号或引号，可能需要额外处理
+        if (fixed.endsWith(',')) fixed = fixed.slice(0, -1) + '}';
+        try {
+          parsed = JSON.parse(fixed);
+          console.log('[Workers AI] JSON 截断已自动修复');
+        } catch {
+          console.error('[Workers AI] JSON 解析失败，原始文本:', rawText.slice(0, 1200));
+          throw parseErr;
+        }
+      }
+
+      // 图片 URL 替换（代理 + 缓存预热）
+      const imageUrlsToCache: string[] = [];
+      rawText = rawText.replace(
+        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
+        (match, key: string, url: string) => {
+          try {
+            const decoded = url.replace(/\\(.)/g, '$1');
+            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+              imageUrlsToCache.push(decoded);
+              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
+            }
+          } catch { /* noop */ }
+          return match;
+        },
+      );
+
+      // 重新解析替换后的 JSON，确保返回的图片 URL 是代理后的
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        console.warn('[Workers AI] 图片 URL 替换后 JSON 解析失败，使用原解析结果');
+      }
+
+      // 后台预热图片缓存
+      c.executionCtx.waitUntil(
+        (async () => {
+          const uniqueUrls = [...new Set(imageUrlsToCache)];
+          if (uniqueUrls.length === 0) return;
+          await Promise.allSettled(
+            uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
+          );
+        })(),
+      );
+
+      // NDJSON 流：每一行是当前的完整 JSON 对象状态
+      // 格式兼容前端 ai@^4 experimental_useObject（基于 ObjectStream.fromResponse）
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify(parsed) + '\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    };
+
+    // ----------------------------------------------------------------
+    // 5.2 DeepSeek (generateObject) — 质量更好，做兜底
+    // 使用 generateObject 获取完整结构化输出，再以 NDJSON 格式返回，
+    // 兼容前端 ai@^4 的 experimental_useObject（基于 ObjectStream.fromResponse）
+    // ----------------------------------------------------------------
+    const tryDeepSeek = async (): Promise<Response> => {
+      console.log('[Fallback] 切换到 DeepSeek...');
+
       const deepseek = createDeepSeek({
         apiKey: c.env.DEEPSEEK_API_KEY,
         baseURL: c.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
       });
 
-      const result = streamObject({
-        model: deepseek('deepseek-chat'),
-        schema: LLMResponseSchema,
-        system: SYSTEM_PROMPT,
-        prompt: userPrompt,
-        temperature: 0.7,
-        maxTokens: 4096,
-      });
-
-      // ---- 5.1 超时保护：Promise.race 30 秒兜底 ----
-      const STREAM_TIMEOUT_MS = 30_000;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error('LLM_TIMEOUT'));
-        }, STREAM_TIMEOUT_MS);
-      });
-
-      const originalResponse = await Promise.race([
-        result.toTextStreamResponse(),
-        timeoutPromise,
-      ]) as Awaited<ReturnType<typeof result.toTextStreamResponse>>;
-
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-
-      // ---- 5.5 拦截流式输出：将外网图片 URL 替换为代理链接 ----
-      // 同时收集检测到的原始 URL，用于后台预热缓存
-      const imageUrlsToCache: string[] = [];
-
-      // 跨 chunk 缓冲区：处理 URL 被截断在两个 chunk 之间的情况
-      let carryOver = '';
-
-      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          const text = carryOver + new TextDecoder().decode(chunk);
-
-          // 正则匹配 JSON 中的 "url":"https://xxx" 模式
-          // 同时处理可能跨 chunk 的不完整 URL：保留最后 200 字符作为 carryOver
-          const safeCut = Math.max(0, text.length - 200);
-          const processText = text.slice(0, safeCut);
-          carryOver = text.slice(safeCut);
-
-          const replaced = processText.replace(
-            /"(?:imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
-            (_match, key: string, url: string) => {
-              try {
-                const decoded = url.replace(/\\(.)/g, '$1');
-                // 仅替换 http/https 开头的真实图片 URL，跳过 null/fallback 标记
-                if (
-                  decoded.startsWith('http://') ||
-                  decoded.startsWith('https://')
-                ) {
-                  imageUrlsToCache.push(decoded);
-                  const encoded = encodeURIComponent(decoded);
-                  return `"${key}":"/api/image-proxy?url=${encoded}"`;
-                }
-              } catch {
-                // 编码失败，保留原文
-              }
-              return _match;
-            },
-          );
-
-          controller.enqueue(new TextEncoder().encode(replaced));
-        },
-        flush(controller) {
-          // 流结束时处理剩余的 carryOver
-          if (carryOver) {
-            const replaced = carryOver.replace(
-              /"(?:imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
-              (_match, key: string, url: string) => {
-                try {
-                  const decoded = url.replace(/\\(.)/g, '$1');
-                  if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-                    imageUrlsToCache.push(decoded);
-                    return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
-                  }
-                } catch { /* noop */ }
-                return _match;
-              },
-            );
-            controller.enqueue(new TextEncoder().encode(replaced));
-          }
-        },
-      });
-
-      // 将原始流管道到 TransformStream
-      c.executionCtx.waitUntil(
-        originalResponse.body!.pipeTo(writable).catch((err) => {
-          console.error('[图片代理] 流管道异常:', err);
+      // 35s 超时
+      const DS_TIMEOUT = 35_000;
+      const result = await Promise.race([
+        generateObject({
+          model: deepseek('deepseek-chat'),
+          schema: LLMResponseSchema,
+          system: SYSTEM_PROMPT,
+          prompt: userPrompt,
+          temperature: 0.7,
+          maxTokens: 4096,
         }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM_TIMEOUT')), DS_TIMEOUT),
+        ),
+      ]);
+
+      const parsed = result.object;
+
+      // 图片 URL 代理替换（在序列化后的 JSON 字符串上操作）
+      const imageUrlsToCache: string[] = [];
+      let rawText = JSON.stringify(parsed);
+      rawText = rawText.replace(
+        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
+        (match, key: string, url: string) => {
+          try {
+            const decoded = url.replace(/\\(.)/g, '$1');
+            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+              imageUrlsToCache.push(decoded);
+              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
+            }
+          } catch { /* noop */ }
+          return match;
+        },
       );
 
-      // 后台预热：异步将检测到的图片 URL 下载并缓存到 R2
-      // 前端首次加载代理 URL 时可能直接命中，无需等待外网下载
+      // 后台预热图片缓存
       c.executionCtx.waitUntil(
         (async () => {
-          // 给流一点时间收集 URL
-          await new Promise((r) => setTimeout(r, 800));
           const uniqueUrls = [...new Set(imageUrlsToCache)];
-          if (uniqueUrls.length === 0) return;
-          await Promise.allSettled(
-            uniqueUrls.map((url) =>
-              downloadAndCacheImage(c.env.IMAGE_CACHE, url),
-            ),
-          );
-          console.log(
-            `[图片代理] 后台预热完成: ${uniqueUrls.length} 张图片`,
-          );
+          if (uniqueUrls.length > 0) {
+            await Promise.allSettled(
+              uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
+            );
+          }
         })(),
       );
 
-      return new Response(readable, {
-        status: originalResponse.status,
-        headers: originalResponse.headers,
+      // NDJSON 流：每一行是当前的完整 JSON 对象状态
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(rawText + '\n'));
+          controller.close();
+        },
       });
+
+      usedFallback = true;
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    };
+
+    try {
+      return await tryWorkersAI();
     } catch (err) {
-      // ---- 步骤 5.2 精细错误分类 + 优雅降级 ----
       const errMsg = err instanceof Error ? err.message : String(err);
-      const errName = err instanceof Error ? err.name : 'UnknownError';
-      console.error(
-        `[步骤E] 大模型流式调用失败 | 类型: ${errName} | 消息: ${errMsg}`,
-      );
+      console.log(`[Workers AI] 失败 (${errMsg.slice(0, 100)})，切换到 DeepSeek 兜底...`);
 
-      // 情况 A：超时（Promise.race 触发）
-      if (errMsg === 'LLM_TIMEOUT') {
-        return c.json(
-          {
-            error:
-              'AI 分析耗时过长，服务器已主动中断。建议简化查询词后重试。',
-            code: 'LLM_TIMEOUT',
-          },
-          504,
-        );
-      }
+      // Workers AI 超时 / 空响应 / JSON 解析异常 → 一律切 DeepSeek
+      try {
+        return await tryDeepSeek();
+      } catch (dsErr) {
+        const dsMsg = dsErr instanceof Error ? dsErr.message : String(dsErr);
+        console.error('[DeepSeek] 兜底也失败:', dsMsg);
 
-      // 情况 B：DeepSeek API 认证/配额错误
-      if (errMsg.includes('401') || errMsg.includes('403')) {
+        if (dsMsg === 'LLM_TIMEOUT') {
+          return c.json(
+            { error: 'AI 分析耗时过长，请搜索更具体的商品名称后重试。', code: 'DUAL_MODEL_TIMEOUT' },
+            504,
+          );
+        }
+        if (dsMsg.includes('401') || dsMsg.includes('403')) {
+          return c.json(
+            { error: 'AI 服务认证失败，正在紧急修复中。', code: 'LLM_AUTH_ERROR' },
+            502,
+          );
+        }
         return c.json(
-          {
-            error: 'AI 实验室认证失败，正在紧急修复中，请稍后再试。',
-            code: 'LLM_AUTH_ERROR',
-          },
-          502,
-        );
-      }
-
-      // 情况 C：DeepSeek API 速率限制
-      if (errMsg.includes('429') || errName === 'RateLimitError') {
-        return c.json(
-          {
-            error:
-              '当前并发请求较多，AI 实验室正在排队处理，请稍后重试。',
-            code: 'LLM_RATE_LIMIT',
-          },
-          503,
-        );
-      }
-
-      // 情况 D：DeepSeek API 内部错误 / 宕机
-      if (
-        errMsg.includes('500') ||
-        errMsg.includes('502') ||
-        errMsg.includes('503') ||
-        errMsg.includes('fetch failed') ||
-        errMsg.includes('network') ||
-        errMsg.includes('ECONNREFUSED') ||
-        errMsg.includes('ETIMEDOUT') ||
-        errMsg.includes('ENOTFOUND')
-      ) {
-        return c.json(
-          {
-            error:
-              'AI 实验室正在维护中，请稍后再试。我们已记录此问题并会尽快恢复。',
-            code: 'LLM_DOWNSTREAM_DOWN',
-          },
-          502,
-        );
-      }
-
-      // 情况 E：流解析异常（Partial JSON / 截断）
-      if (
-        errName === 'AI_InvalidResponseError' ||
-        errMsg.includes('JSON') ||
-        errMsg.includes('parse') ||
-        errMsg.includes('schema')
-      ) {
-        return c.json(
-          {
-            error:
-              'AI 返回格式异常，可能是数据流在传输中被截断。请重试或简化查询词。',
-            code: 'LLM_PARSE_ERROR',
-          },
+          { error: 'AI 分析服务暂时不可用，请稍后重试。', code: 'DUAL_MODEL_FAILED' },
           500,
         );
       }
-
-      // 情况 F：通用兜底
-      return c.json(
-        {
-          error:
-            'AI 分析服务暂时不可用，请稍后重试。',
-          code: 'LLM_UNKNOWN',
-        },
-        500,
-      );
     }
   } catch (err) {
     // 顶层兜底：未预期的异常
@@ -673,47 +611,16 @@ app.get('/api/trending', async (c) => {
 });
 
 // ============================================
-// GET /api/health — 健康检查（含 DeepSeek 连通性探测）
+// GET /api/health — 健康检查
 // ============================================
 app.get('/api/health', async (c) => {
-  // 异步探测 DeepSeek 连通性（3 秒超时）
-  let deepseekStatus: 'ok' | 'degraded' | 'down' | 'unknown' = 'unknown';
-
-  try {
-    // 轻量级请求：只查可用模型列表（极低 token 消耗）
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-
-    const resp = await fetch(
-      `${c.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'}/v1/models`,
-      {
-        headers: {
-          Authorization: `Bearer ${c.env.DEEPSEEK_API_KEY}`,
-        },
-        signal: controller.signal,
-      },
-    );
-
-    clearTimeout(timeout);
-
-    if (resp.ok) {
-      deepseekStatus = 'ok';
-    } else if (resp.status === 401 || resp.status === 403) {
-      deepseekStatus = 'degraded'; // 认证问题
-    } else {
-      deepseekStatus = 'down';
-    }
-  } catch {
-    deepseekStatus = 'down';
-  }
-
   return c.json({
-    status: deepseekStatus === 'ok' ? 'ok' : 'degraded',
+    status: 'ok',
     timestamp: Date.now(),
     uptime: Math.floor(performance.now() / 1000),
     services: {
-      deepseek: deepseekStatus,
-      vectorize: 'ok', // Worker 可用即 Vectorize 可达
+      workers_ai: 'ok',
+      vectorize: 'ok',
       d1: 'ok',
     },
   });

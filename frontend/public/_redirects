@@ -1,0 +1,3 @@
+# Cloudflare Pages 代理规则：/api/* 请求转发到 Worker
+# 200 = 代理（URL 不变，用户无感知）
+/api/*  https://ai-avoid-pit.793309184.workers.dev/api/:splat  200

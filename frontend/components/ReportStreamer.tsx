@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { experimental_useObject } from 'ai/react';
 import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { apiUrl } from '../lib/api';
 import { LLMResponseSchema } from '../lib/schema';
 import PriceReferenceCard from './PriceReferenceCard';
 import SourceStatsPanel from './SourceStatsPanel';
@@ -11,7 +12,6 @@ import SpecsCheckTable from './SpecsCheckTable';
 import VerifySearch from './VerifySearch';
 import CommerceBanner from './CommerceBanner';
 import MarkdownRenderer from './MarkdownRenderer';
-import ProductImage from './ProductImage';
 import { ProductStructuredData } from './ProductStructuredData';
 
 const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -317,6 +317,19 @@ function ErrorDisplay({
   error: Error;
   onRetry: () => void;
 }) {
+  const isDev = process.env.NODE_ENV === 'development';
+  const msg = error.message || '未知错误';
+  const statusMatch = msg.match(/(\d{3})/);
+  const statusCode = statusMatch ? statusMatch[1] : null;
+  let hint = '';
+  if (statusCode === '404') {
+    hint = 'API 地址未找到，请检查 Worker URL 配置';
+  } else if (statusCode === '500' || statusCode === '502' || statusCode === '504') {
+    hint = 'AI 服务暂时不可用，请稍后重试';
+  } else if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed')) {
+    hint = '网络连接失败，请检查网络或 Worker 是否正常运行';
+  }
+
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
@@ -336,9 +349,10 @@ function ErrorDisplay({
         </svg>
       </div>
       <p className="font-semibold text-red-700">分析失败</p>
-      <p className="mt-1 text-sm text-red-500">
-        {error.message || '未知错误'}
-      </p>
+      <p className="mt-1 text-sm text-red-500">{hint || msg}</p>
+      {isDev && (
+        <p className="mt-1 text-xs text-red-400 font-mono break-all">{msg}</p>
+      )}
       <button
         type="button"
         onClick={onRetry}
@@ -520,10 +534,11 @@ function generateLocalReport(query: string) {
 // ============================================
 export function ReportStreamer({ query }: ReportStreamerProps) {
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/search`,
+    api: apiUrl('/api/search'),
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);
+      console.error('[ReportStreamer] AI 请求失败:', msg, err);
       const isServerOrNetworkError =
         msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
         msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
@@ -574,7 +589,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       if (!object?.intent) {
         setIsSlow(true);
       }
-    }, 25_000);
+    }, 45_000);
     return () => clearTimeout(timer);
   }, [isLoading, object?.intent, query]);
 
@@ -598,7 +613,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
 
       setSubmittingIndex(index);
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/feedback`, {
+        await fetch(apiUrl('/api/feedback'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -766,14 +781,6 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           <div className="flex flex-col md:flex-row">
             {/* ---------- 左侧列：产品图 + 细分型号透视 ---------- */}
             <div className="flex flex-col border-gray-100 bg-gray-50/50 p-6 md:w-[45%] md:border-r">
-              {/* 产品图片 — ProductImage 组件（onError 降级 + 专业占位 UI） */}
-              <ProductImage
-                src={imgSrc}
-                alt={imgAlt}
-                className="mb-5"
-                isStreaming={isLoading}
-              />
-
               {/* ===== SKU 型号选择器（新版交互） ===== */}
               {hasSkus ? (
                 <div className="space-y-4">

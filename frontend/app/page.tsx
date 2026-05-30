@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSearchHistory } from '../hooks/useSearchHistory';
 import { useBookmarks } from '../hooks/useBookmarks';
+import { apiUrl } from '../lib/api';
 import BroadcastTicker from '../components/BroadcastTicker';
 
 
@@ -199,7 +200,7 @@ export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [trendingKeywords, setTrendingKeywords] = useState<string[]>([]);
+  const [, setTrendingKeywords] = useState<string[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [exposeData, setExposeData] = useState<Array<{
@@ -221,7 +222,7 @@ export default function HomePage() {
     let cancelled = false;
     async function fetchTrending() {
       try {
-        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/trending`);
+        const resp = await fetch(apiUrl('/api/trending'));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!cancelled && data.keywords?.length > 0) {
@@ -244,7 +245,7 @@ export default function HomePage() {
     let cancelled = false;
     async function fetchExpose() {
       try {
-        const resp = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/expose?limit=4`);
+        const resp = await fetch(apiUrl('/api/expose?limit=4'));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!cancelled && data.posts?.length > 0) {

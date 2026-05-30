@@ -25,7 +25,8 @@ interface ApiErrorBody {
   action?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_WORKER_URL || 'http://localhost:8787';
+import { apiUrl } from '../../lib/api';
+
 const IS_DEV = process.env.NODE_ENV === 'development';
 const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const HAS_CLERK = !!CLERK_KEY;
@@ -91,8 +92,9 @@ function ExposeForm({
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/expose`, {
+      const res = await fetch(apiUrl('/api/expose'), {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
@@ -301,7 +303,8 @@ function ExposeFeed() {
 
       try {
         const res = await fetch(
-          `${API_BASE}/api/expose?status=verified&offset=${currentOffset}&limit=20`,
+          apiUrl(`/api/expose?status=verified&offset=${currentOffset}&limit=20`),
+          { credentials: 'include' },
         );
 
         // ★ 先解析响应体，再判断状态码，确保错误详情不丢失

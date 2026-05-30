@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { experimental_useObject } from 'ai/react';
+import { apiUrl } from '../../lib/api';
 import { LLMResponseSchema, LLMResponse } from '../../lib/schema';
 import Link from 'next/link';
 
@@ -239,7 +240,7 @@ export default function UsedCheckPage() {
   const [description, setDescription] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/search`,
+    api: apiUrl('/api/search'),
     schema: LLMResponseSchema,
   });
 
@@ -385,7 +386,7 @@ export default function UsedCheckPage() {
             '闲鱼 iPhone 15 Pro 验机',
             '二手相机索尼 A7M4',
             '电动车九号 E100',
-            '二手显卡 RTX 4099',
+            '二手显卡 RTX 4090',
             '二手积家手表鉴定',
             'AirPods Pro 真伪鉴别',
           ].map((suggestion) => (

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { experimental_useObject } from 'ai/react';
+import { apiUrl } from '../../lib/api';
 import { LLMResponseSchema } from '../../lib/schema';
 import Link from 'next/link';
 
@@ -70,7 +71,7 @@ export default function ClinicPage() {
   const [followUpStep, setFollowUpStep] = useState(0); // 步骤7：AI追问（0=未开始，1-3=追问中，4=完成）
   const [followUpAnswers, setFollowUpAnswers] = useState<string[]>([]);
   const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: `${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/search`,
+    api: apiUrl('/api/search'),
     schema: LLMResponseSchema,
   });
 

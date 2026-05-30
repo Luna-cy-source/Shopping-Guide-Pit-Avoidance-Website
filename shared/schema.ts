@@ -57,6 +57,38 @@ export const InspectionItemSchema = z.object({
 export type InspectionItem = z.infer<typeof InspectionItemSchema>;
 
 // ============================================
+// 全网参考价条目 Schema
+// ============================================
+export const PriceReferenceSchema = z.object({
+  platform: z.enum(["京东", "淘宝", "拼多多", "抖音", "苏宁"]).describe("电商平台名称"),
+  price: z.number().min(0).describe("该平台的常态活动价（元），基于知识库估算"),
+  url: z.string().url().optional().describe("参考链接（如有）"),
+});
+
+export type PriceReference = z.infer<typeof PriceReferenceSchema>;
+
+// ============================================
+// 数据溯源 Schema
+// ============================================
+export const SourceStatsSchema = z.object({
+  sampleSize: z.number().min(1).max(99999).describe("估算的参考评价总数"),
+  platforms: z.array(z.string()).min(1).max(6).describe("数据来源平台列表，如 ['京东', '小红书', 'B站', '什么值得买']"),
+});
+
+export type SourceStats = z.infer<typeof SourceStatsSchema>;
+
+// ============================================
+// 参数透视条目 Schema
+// ============================================
+export const SpecsCheckSchema = z.object({
+  specName: z.string().min(1).max(60).describe("参数名称，如 '电池容量'、'屏幕刷新率'、'材质'"),
+  officialClaim: z.string().min(1).max(200).describe("厂商官方宣称的规格/宣传语"),
+  truth: z.string().min(1).max(300).describe("真实情况或其中的猫腻/水分"),
+});
+
+export type SpecsCheck = z.infer<typeof SpecsCheckSchema>;
+
+// ============================================
 // 大模型输出 Schema（discriminated union by intent）
 // ============================================
 export const LLMResponseSchema = z.discriminatedUnion("intent", [
@@ -66,6 +98,31 @@ export const LLMResponseSchema = z.discriminatedUnion("intent", [
     productName: z.string().describe("商品名称"),
     score: z.number().min(0).max(10).describe("综合评分 0-10"),
     priceAnalysis: z.string().describe("价格分析，含性价比评估"),
+    priceReference: z
+      .array(PriceReferenceSchema)
+      .min(0)
+      .max(4)
+      .optional()
+      .describe("各电商平台的全网参考底价（基于知识库估算常态活动价）"),
+    sourceStats: z
+      .object({
+        sampleSize: z.number().min(1).max(99999).describe("估算的参考评价总数"),
+        platforms: z.array(z.string()).min(1).max(6).describe("数据来源平台列表"),
+      })
+      .optional()
+      .describe("数据溯源信息，说明分析所用参考数据的来源和规模"),
+    specsCheck: z
+      .array(
+        z.object({
+          specName: z.string().min(1).max(60).describe("参数名称"),
+          officialClaim: z.string().min(1).max(200).describe("厂商宣称"),
+          truth: z.string().min(1).max(300).describe("真实情况/猫腻"),
+        })
+      )
+      .min(0)
+      .max(8)
+      .optional()
+      .describe("参数透视：对比厂商宣称 vs 真实情况，揭露参数猫腻"),
     imageUrl: z
       .string()
       .describe(
@@ -255,6 +312,18 @@ export const CacheRecordSchema = z.object({
 });
 
 export type CacheRecord = z.infer<typeof CacheRecordSchema>;
+
+// ============================================
+// 避坑线索提交 Schema
+// ============================================
+export const PitSubmissionSchema = z.object({
+  userId: z.string().min(1, '用户ID不能为空'),
+  productName: z.string().min(1, '商品名不能为空').max(200),
+  pitTitle: z.string().min(1, '坑点标题不能为空').max(100, '标题最多100字'),
+  description: z.string().min(1, '描述不能为空').max(2000, '描述最多2000字'),
+});
+
+export type PitSubmission = z.infer<typeof PitSubmissionSchema>;
 
 // ============================================
 // 排雷曝光台 — 提交 Schema

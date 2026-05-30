@@ -314,6 +314,18 @@ export const CacheRecordSchema = z.object({
 export type CacheRecord = z.infer<typeof CacheRecordSchema>;
 
 // ============================================
+// 避坑线索提交 Schema
+// ============================================
+export const PitSubmissionSchema = z.object({
+  userId: z.string().min(1, '用户ID不能为空'),
+  productName: z.string().min(1, '商品名不能为空').max(200),
+  pitTitle: z.string().min(1, '坑点标题不能为空').max(100, '标题最多100字'),
+  description: z.string().min(1, '描述不能为空').max(2000, '描述最多2000字'),
+});
+
+export type PitSubmission = z.infer<typeof PitSubmissionSchema>;
+
+// ============================================
 // 排雷曝光台 — 提交 Schema
 // ============================================
 export const ExposeSubmissionSchema = z.object({

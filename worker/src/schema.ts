@@ -145,7 +145,8 @@ export const LLMResponseSchema = z.discriminatedUnion("intent", [
             "图片替代文本，描述图片内容。url 为 'null' 时填对该商品外观的文字描述，如 'iPhone 17 Pro Max 沙漠金白底渲染图'",
           ),
       })
-      .describe("该商品的高清产品图片信息。对于具体商品查询，此字段必须提供，不得为空。若知识库无法匹配，url 填 'null'。"),
+      .optional()
+      .describe("该商品的高清产品图片信息（兼容旧字段）"),
     productVariants: z
       .array(
         z.object({

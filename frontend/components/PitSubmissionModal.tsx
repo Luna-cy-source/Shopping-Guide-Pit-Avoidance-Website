@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth, SignInButton } from '@clerk/clerk-react';
+import { apiUrl } from '../lib/api';
 
 const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const HAS_CLERK = !!CLERK_KEY;
@@ -44,7 +45,7 @@ function PitModalWithAuth({ productName }: Props) {
     setSubmitting(true);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_WORKER_URL || 'http://localhost:8787'}/api/pit-submission`,
+        apiUrl('/api/pit-submission'),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

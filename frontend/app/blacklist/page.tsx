@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { apiUrl } from '../../lib/api';
 
 interface BlacklistItem {
   id: number;
@@ -27,7 +28,7 @@ export default function BlacklistPage() {
   const router = useRouter();
   const [items, setItems] = useState<BlacklistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [statusMap, setStatusMap] = useState<Record<number, ProductStatus>>({}); // 步骤5：状态管理
   const [statusNoteModal, setStatusNoteModal] = useState<{ id: number; status: ProductStatus } | null>(null);
@@ -37,8 +38,7 @@ export default function BlacklistPage() {
 
     async function fetchBlacklist() {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_WORKER_URL || '';
-        const resp = await fetch(`${apiBase}/api/blacklist`);
+        const resp = await fetch(apiUrl('/api/blacklist'));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!cancelled) {

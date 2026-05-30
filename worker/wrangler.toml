@@ -18,10 +18,18 @@ database_id = "7510eda1-725c-42fa-b1a4-8e62ee321083"
 binding = "KNOWLEDGE_VECTOR"
 index_name = "knowledge-vectors"
 
-# ===== R2 存储桶 (图片代理缓存) — 需先在 Dashboard 启用 R2 =====
-# [[r2_buckets]]
-# binding = "IMAGE_CACHE"
-# bucket_name = "image-cache"
+# ===== R2 存储桶 (图片代理缓存) =====
+[[r2_buckets]]
+binding = "IMAGE_CACHE"
+bucket_name = "image-cache"
+
+# ===== AI 绑定（Workers AI）=====
+[ai]
+binding = "AI"
+
+# ===== Cron 定时触发器 (每天凌晨 3 点扫描高频未覆盖商品) =====
+[triggers]
+crons = ["0 3 * * *"]
 
 # ===== 可选的 dev 环境配置 =====
 [env.dev]

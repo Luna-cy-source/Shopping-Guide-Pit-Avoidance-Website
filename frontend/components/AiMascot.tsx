@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
 import Link from 'next/link';
+import { apiUrl } from '../lib/api';
 import {
   getUserProgress,
   addXP,
@@ -174,7 +175,7 @@ export default function AiMascot() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL || 'https://api.wq.abrdns.eu.cc'}/api/search`, {
+      const res = await fetch(apiUrl('/api/search'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text }),
@@ -200,22 +201,41 @@ export default function AiMascot() {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.startsWith('data:')) {
-            const data = trimmed.slice(5).trim();
-            if (data.startsWith('0:')) {
-              try {
-                const textChunk = JSON.parse(data.slice(2));
-                if (typeof textChunk === 'string') {
-                  fullText += textChunk;
-                  streamingTextRef.current = fullText;
-                  setStreamingText(fullText);
-                  if (!receivedFirstChunk) {
-                    receivedFirstChunk = true;
-                    setIsTyping(false);
+          if (!trimmed) continue;
+
+          // 尝试新格式：纯 JSON NDJSON 行（与 ReportStreamer 兼容）
+          try {
+            const obj = JSON.parse(trimmed);
+            // 提取摘要信息用于聊天展示
+            if (obj && typeof obj === 'object' && 'intent' in obj) {
+              const productName = obj.productName || obj.categoryName || query || '';
+              const score = typeof obj.score === 'number' ? ` ${obj.score}/10分` : '';
+              const priceInfo = obj.priceAnalysis || obj.overview || '';
+              fullText = `「${productName}」${score}\n${priceInfo}`;
+              streamingTextRef.current = fullText;
+              setStreamingText(fullText);
+              receivedFirstChunk = true;
+              setIsTyping(false);
+            }
+          } catch {
+            // 不是有效 JSON → 尝试旧格式：SSE/DataStream 协议
+            if (trimmed.startsWith('data:')) {
+              const data = trimmed.slice(5).trim();
+              if (data.startsWith('0:')) {
+                try {
+                  const textChunk = JSON.parse(data.slice(2));
+                  if (typeof textChunk === 'string') {
+                    fullText += textChunk;
+                    streamingTextRef.current = fullText;
+                    setStreamingText(fullText);
+                    if (!receivedFirstChunk) {
+                      receivedFirstChunk = true;
+                      setIsTyping(false);
+                    }
                   }
+                } catch {
+                  // 忽略解析失败的 chunk
                 }
-              } catch {
-                // 忽略解析失败的 chunk
               }
             }
           }
