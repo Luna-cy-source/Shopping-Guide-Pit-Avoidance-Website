@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 
 // =====================================================
 // 报告页右上角认证按钮（纯客户端组件）

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/clerk-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import AiMascot from '../components/AiMascot';

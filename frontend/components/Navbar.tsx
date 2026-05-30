@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 
 // =====================================================
 // 全局导航栏

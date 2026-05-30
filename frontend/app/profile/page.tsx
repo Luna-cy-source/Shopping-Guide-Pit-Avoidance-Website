@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { SignedIn, SignedOut, SignInButton } from '@clerk/nextjs';
+import { SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 import UserLevelCard from '../../components/UserLevelCard';
 import { useSearchHistory } from '../../hooks/useSearchHistory';
 import { useBookmarks } from '../../hooks/useBookmarks';

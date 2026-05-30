@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth, SignInButton } from '@clerk/nextjs';
+import { useAuth, SignInButton } from '@clerk/clerk-react';
 
 // =====================================================
 // 避坑线索提交弹窗（仅登录用户可提交）

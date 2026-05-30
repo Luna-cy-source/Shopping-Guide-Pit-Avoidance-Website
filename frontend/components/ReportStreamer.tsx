@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { experimental_useObject } from 'ai/react';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { LLMResponseSchema } from '../lib/schema';
 import PriceReferenceCard from './PriceReferenceCard';
 import SourceStatsPanel from './SourceStatsPanel';

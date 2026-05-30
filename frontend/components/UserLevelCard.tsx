@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import {
   getUserProgress,
   getLevelProgressPercent,

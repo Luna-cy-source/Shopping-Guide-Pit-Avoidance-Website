@@ -1,14 +1,11 @@
-import { SignUp } from '@clerk/nextjs';
+'use client';
 
-// static export 要求动态路由提供 generateStaticParams
-export function generateStaticParams() {
-  return [{ 'sign-up': [] }];
-}
+import { SignIn } from '@clerk/clerk-react';
 
-export default function SignUpPage() {
+export default function SignInPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-gray-50 p-4">
-      <SignUp
+      <SignIn
         appearance={{
           elements: {
             card: 'shadow-xl border border-gray-100',
