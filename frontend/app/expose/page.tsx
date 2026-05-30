@@ -27,6 +27,8 @@ interface ApiErrorBody {
 
 const API_BASE = process.env.NEXT_PUBLIC_WORKER_URL || 'http://localhost:8787';
 const IS_DEV = process.env.NODE_ENV === 'development';
+const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const HAS_CLERK = !!CLERK_KEY;
 
 // ============================================
 // 格式化时间
@@ -137,11 +139,17 @@ function ExposeForm({
         </div>
         <div className="text-center py-4">
           <p className="mb-3 text-sm text-slate-500">登录后方可提交曝光</p>
-          <SignInButton mode="modal">
-            <button className="rounded-full bg-gradient-to-r from-red-500 to-rose-500 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:from-red-600 hover:to-rose-600 hover:shadow-md">
-              登录 / 注册
-            </button>
-          </SignInButton>
+          {HAS_CLERK ? (
+            <SignInButton mode="modal">
+              <button className="rounded-full bg-gradient-to-r from-red-500 to-rose-500 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:from-red-600 hover:to-rose-600 hover:shadow-md">
+                登录 / 注册
+              </button>
+            </SignInButton>
+          ) : (
+            <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-400">
+              认证服务未配置，登录功能暂不可用
+            </div>
+          )}
         </div>
       </div>
     );
@@ -557,11 +565,15 @@ function ExposeFeed() {
 }
 
 // ============================================
-// 主组件
+// ExposePageContent — 渲染内容（抽离以便条件性 useAuth）
 // ============================================
-export default function ExposePage() {
-  const { isSignedIn, userId } = useAuth();
-  const feedRef = useRef<{ refresh: () => void }>(null);
+function ExposePageContent({
+  isSignedIn,
+  userId,
+}: {
+  isSignedIn: boolean | undefined;
+  userId: string | null | undefined;
+}) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleSuccess = () => {
@@ -635,4 +647,23 @@ export default function ExposePage() {
       </p>
     </main>
   );
+}
+
+// ============================================
+// ExposePageWithAuth — 有 Clerk 时，调用真实 useAuth
+// ============================================
+function ExposePageWithAuth() {
+  const { isSignedIn, userId } = useAuth();
+  return <ExposePageContent isSignedIn={isSignedIn} userId={userId} />;
+}
+
+// ============================================
+// 主组件
+// ============================================
+export default function ExposePage() {
+  // 无 Clerk Key → 跳过 useAuth，传入降级值
+  if (!HAS_CLERK) {
+    return <ExposePageContent isSignedIn={false} userId={null} />;
+  }
+  return <ExposePageWithAuth />;
 }

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 
+const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 // =====================================================
 // 全局导航栏
 // 轻量级，透底融入页面，不抢夺视觉焦点
@@ -38,7 +40,7 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {!mounted ? (
             <div className="h-8 w-20 rounded-full border border-gray-200 bg-gray-100/80" />
-          ) : (
+          ) : HAS_CLERK ? (
             <>
               <SignedOut>
                 <SignInButton mode="modal">
@@ -59,7 +61,7 @@ export default function Navbar() {
                 />
               </SignedIn>
             </>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

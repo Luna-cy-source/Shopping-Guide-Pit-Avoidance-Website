@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 
+const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 // =====================================================
 // 报告页右上角认证按钮（纯客户端组件）
 // 使用 mounted 状态避免 Clerk 的 hydration mismatch
@@ -17,6 +19,10 @@ export default function AuthButtons() {
         <div className="h-7 w-16 rounded-full border border-gray-200 bg-gray-100" />
       </div>
     );
+  }
+
+  if (!HAS_CLERK) {
+    return null;
   }
 
   return (

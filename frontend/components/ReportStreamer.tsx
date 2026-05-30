@@ -14,6 +14,8 @@ import MarkdownRenderer from './MarkdownRenderer';
 import ProductImage from './ProductImage';
 import { ProductStructuredData } from './ProductStructuredData';
 
+const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 // ============================================
 // Props
 // ============================================
@@ -908,7 +910,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
         <DisputeLabels flaws={flaws} />
 
         {/* 分享海报 & 导出报告（步骤9：登录门控） */}
-        {hasScore && flaws.length > 0 && clerkMounted && (
+        {hasScore && flaws.length > 0 && clerkMounted && HAS_CLERK && (
           <div className="flex justify-end gap-2">
             {/* 导出报告按钮 */}
             <SignedOut>

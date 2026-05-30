@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 
+const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 // =====================================================
 // 全局顶部导航栏 — 极简实验室风格
 // Logo + 三个功能 Tab + Clerk 用户区
@@ -108,7 +110,7 @@ export default function Header() {
         <div className="flex shrink-0 items-center gap-3">
           {!mounted ? (
             <div className="h-8 w-20 animate-pulse rounded-full border border-slate-100 bg-slate-100/80" />
-          ) : (
+          ) : HAS_CLERK ? (
             <>
               {/* 个人主页入口 */}
               <Link
@@ -137,6 +139,14 @@ export default function Header() {
                 />
               </SignedIn>
             </>
+          ) : (
+            /* 无 Clerk key - 仅保留个人主页入口 */
+            <Link
+              href="/profile"
+              className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95"
+            >
+              👤 个人主页
+            </Link>
           )}
         </div>
       </div>

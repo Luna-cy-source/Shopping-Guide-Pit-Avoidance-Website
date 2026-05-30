@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ReportStreamerWrapper from '../../components/ReportStreamerWrapper';
 import MiniSearch from '../../components/MiniSearch';
@@ -8,7 +8,7 @@ import AuthButtons from '../../components/AuthButtons';
 import BookmarkButton from '../../components/BookmarkButton';
 import PitSubmissionModal from '../../components/PitSubmissionModal';
 
-export default function ReportPage() {
+function ReportContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const rawQ = searchParams?.get('q') || '';
@@ -101,3 +101,12 @@ export default function ReportPage() {
     </div>
   );
 }
+
+export default function ReportPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <ReportContent />
+    </Suspense>
+  );
+}
+
