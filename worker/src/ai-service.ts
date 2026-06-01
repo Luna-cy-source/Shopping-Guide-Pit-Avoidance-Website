@@ -213,7 +213,7 @@ async function getEmbedding(
   text: string,
 ): Promise<number[] | null> {
   try {
-    const embeddingResponse = (await ai.run('@cf/baai/bge-large-zh-v1.5', {
+    const embeddingResponse = (await ai.run('@cf/baai/bge-m3', {
       text: [text],
     })) as { data: number[][] };
     return embeddingResponse.data[0] ?? null;
@@ -240,7 +240,7 @@ async function vectorSemanticSearch(
 
     try {
       const results = await vectorIndex.query(embedding, {
-        topK: 3,
+        topK: 2,
         returnMetadata: true,
         returnValues: false,
       });
@@ -256,9 +256,9 @@ async function vectorSemanticSearch(
     }
   }
 
-  // 按相关度降序排序，取前 5 条
+  // 按相关度降序排序，取前 3 条
   allMatches.sort((a, b) => b.score - a.score);
-  const top = allMatches.slice(0, 5);
+  const top = allMatches.slice(0, 3);
 
   if (top.length === 0) return '';
 
@@ -317,6 +317,21 @@ export async function retrieveContext(
   const d1Summaries = d1CacheResults
     .map(extractSummaryFromCache)
     .filter((s): s is string => s !== null);
+
+  // ⚡ 快速路径：如果 D1 命中足够多（同型号商品已有缓存结果），直接返回，跳过向量检索
+  if (d1Summaries.length >= 1 && d1CacheResults.length >= 1) {
+    const context = deduplicateAndJoin('', d1Summaries);
+    console.log(`[混合检索] ⚡ 快速路径：D1命中${d1CacheResults.length}条，跳过向量检索`);
+    return {
+      context,
+      sources: {
+        modelKeys,
+        d1CacheHits: d1CacheResults.length,
+        vectorHits: -1, // 标记跳过
+        historicalQueries,
+      },
+    };
+  }
 
   // 2d. 将历史查询词也作为向量检索的补充输入
   const vectorQueries = [query, ...historicalQueries].slice(0, 5);

@@ -14,10 +14,12 @@ const PLATFORM_COLORS: Record<string, { bg: string; text: string; border: string
 };
 
 // ============================================
-// 排序：按价格从低到高
+// 排序：按价格从低到高（过滤无效价格和空值）
 // ============================================
 function sortByPrice(list: PriceReference[]): PriceReference[] {
-  return [...list].sort((a, b) => a.price - b.price);
+  return [...list]
+    .filter((x): x is PriceReference => x != null && typeof x.price === 'number' && !isNaN(x.price))
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
 }
 
 // ============================================
@@ -31,6 +33,7 @@ export default function PriceReferenceCard({ items }: Props) {
   if (!items || items.length === 0) return null;
 
   const sorted = sortByPrice(items);
+  if (sorted.length === 0) return null; // 全部价格无效，不渲染
   const best = sorted[0];
 
   return (
@@ -76,7 +79,7 @@ export default function PriceReferenceCard({ items }: Props) {
         <div>
           <p className="text-xs text-amber-600">预估最低到手价</p>
           <p className="text-lg font-bold text-amber-700">
-            ¥{best.price.toLocaleString()}
+            ¥{typeof best.price === 'number' ? best.price.toLocaleString() : '—'}
             <span className="ml-2 text-xs font-medium text-amber-500">
               {best.platform}
             </span>
@@ -104,7 +107,7 @@ export default function PriceReferenceCard({ items }: Props) {
               </span>
               <div className="flex items-center gap-1.5">
                 <span className={`text-sm font-bold ${color.text}`}>
-                  ¥{item.price.toLocaleString()}
+                  ¥{typeof item.price === 'number' ? item.price.toLocaleString() : '—'}
                 </span>
                 {isBest && (
                   <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold text-amber-700">

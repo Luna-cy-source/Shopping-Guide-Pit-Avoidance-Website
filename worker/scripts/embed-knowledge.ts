@@ -30,8 +30,8 @@ const CONFIG = {
   // Cloudflare API Token（需具备 Workers AI 权限）
   apiToken: process.env.CLOUDFLARE_API_TOKEN || 'your-cloudflare-api-token',
 
-  // 文本嵌入模型（与 wrangler.toml 中 @cf/baai/bge-large-zh-v1.5 一致）
-  embeddingModel: '@cf/baai/bge-large-zh-v1.5',
+  // 文本嵌入模型（使用 Cloudflare Workers AI 的 bge-m3 多语言模型）
+  embeddingModel: '@cf/baai/bge-m3',
 
   // 每批处理条数
   batchSize: 10,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { experimental_useObject } from 'ai/react';
 import { apiUrl } from '../../lib/api';
 import { LLMResponseSchema } from '../../lib/schema';
@@ -108,7 +108,7 @@ export default function ClinicPage() {
   // 离线兜底状态
   const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalClinicResult> | null>(null);
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search'),
+    api: apiUrl('/api/search/stream'),
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);
@@ -124,6 +124,18 @@ export default function ClinicPage() {
   const object = localResult || aiObject;
 
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // ★ 超时兜底：AI 请求超过 18 秒无结果 → 自动展示本地模拟数据
+  useEffect(() => {
+    if (!isLoading || localResult || object?.intent === 'recommend') return;
+    const timer = setTimeout(() => {
+      console.warn('[Clinic] ⏰ AI 响应超时(18s)，启用本地兜底');
+      if (!object?.intent) {
+        setLocalResult(generateLocalClinicResult(submittedQuery || description));
+      }
+    }, 18000);
+    return () => clearTimeout(timer);
+  }, [isLoading, localResult, object?.intent]);
 
   useEffect(() => {
     if (object?.intent === 'recommend' && resultsRef.current) {
@@ -159,17 +171,141 @@ ${followUpAnswers.length > 0 ? `\n追问回答：${followUpAnswers.map((a, i) =>
     setLocalResult(null);
   };
 
-  // 步骤7：AI追问问题池
-  const FOLLOW_UP_QUESTIONS = [
-    '你更看重续航还是重量？',
-    '主要在家用还是外出用？',
-    '有没有特别讨厌的品牌？',
-  ];
-  const FOLLOW_UP_PRESET_ANSWERS: string[][] = [
-    ['续航优先 🔋', '重量优先 🪶', '两者兼顾'],
-    ['主要家用 🏠', '主要外出 🚶', '两者都有'],
-    ['没有特别', '避开小米', '避开华为', '避开苹果', '避开三星'],
-  ];
+  // 步骤7：AI追问 — 根据用户输入智能匹配问题池
+  function buildFollowUpQuestions(query: string): { questions: string[]; answers: string[][] } {
+    const q = query.toLowerCase();
+
+    // ===== 送礼场景 =====
+    if (/妈妈|爸爸|礼物|生日|女朋友|男朋友|老公|老婆|长辈|老人|父母|父亲|母亲|孩子|儿童|女儿|儿子|闺蜜|男友|女友|对象|爱人|情人节|母亲节|父亲节|结婚|纪念日|新年|春节/.test(q)) {
+      return {
+        questions: [
+          '收礼人大概是什么年龄段？',
+          'ta平时有什么兴趣爱好或偏好风格？',
+          '希望礼物偏向实用型还是仪式感强一点？',
+        ],
+        answers: [
+          ['20-30岁年轻人 🧑', '30-50岁中年人 👨', '50岁以上长辈 🧓', '学龄前儿童 🧒'],
+          ['喜欢科技数码 📱', '注重生活品质 🏡', '热爱运动户外 🏃', '文艺小清新 🎨', '吃货一枚 🍜', '实用主义者 💼'],
+          ['越实用越好 🔧', '有仪式感/颜值高 🎁', '两者兼顾 ✨'],
+        ],
+      };
+    }
+
+    // ===== 厨房/小家电场景 =====
+    if (/空气炸锅|吹风机|电饭煲|厨房|料理|烤箱|微波炉|破壁机|豆浆机|咖啡机|榨汁|厨师机|热水壶|养生壶|保温杯|电水壶|洗碗机|消毒柜|蒸箱|炖盅|面包机|早餐机|多士炉/.test(q)) {
+      return {
+        questions: [
+          '厨房空间大吗？对噪音敏感吗？',
+          '主要几个人使用？',
+          '更看重操作简便还是功能丰富？',
+        ],
+        answers: [
+          ['空间充足，不限尺寸 🏠', '台面空间有限 ⚠️', '对噪音很敏感 🔇'],
+          ['1人独享 👤', '2-3人小家庭 👫', '4人以上大家庭 👨‍👩‍👧‍👦'],
+          ['一键傻瓜式操作 😌', '功能越多越好 🎛️', '两者兼顾 ⚖️'],
+        ],
+      };
+    }
+
+    // ===== 个人护理/美妆场景 =====
+    if (/护肤|化妆品|面膜|精华|面霜|防晒|洗面奶|口红|香水|美容仪|剃须|牙刷|护发|洗发|沐浴|身体乳|脱毛|抗老|美白|保湿|祛痘/.test(q)) {
+      return {
+        questions: [
+          '肤质大概是什么类型？',
+          '有没有特别想改善的皮肤问题？',
+          '预算更倾向于买一件好产品还是一套组合？',
+        ],
+        answers: [
+          ['油性皮肤 💧', '干性皮肤 🏜️', '混合肌肤 🔀', '敏感肌 ⚠️'],
+          ['控油祛痘 🎯', '抗老紧致 ✨', '美白提亮 🌟', '补水保湿 💦', '淡化痘印 🔄'],
+          ['买一件好的 👑', '买一套搭配的 🎁'],
+        ],
+      };
+    }
+
+    // ===== 清洁/家居场景 =====
+    if (/吸尘器|扫地|拖地|洗衣机|空调|净化器|加湿器|除湿机|新风|地暖|烘干|清洁|除尘|擦窗|马桶|智能马桶|床垫|沙发|窗帘|收纳/.test(q)) {
+      return {
+        questions: [
+          '家里房屋面积大概多大？',
+          '家里有宠物或小孩吗？',
+          '更看重清洁效果还是静音/便捷？',
+        ],
+        answers: [
+          ['小户型（<60㎡）🏠', '中户型（60-120㎡）🏡', '大户型（120㎡以上）🏰'],
+          ['有宠物 🐱🐶', '有小孩 👶', '都没有，就成年人 👫'],
+          ['效果第一，不怕吵 💪', '必须安静，不能吵到家人 🔇', '越方便省心越好 😌'],
+        ],
+      };
+    }
+
+    // ===== 数码/电脑/办公场景 =====
+    if (/耳机|手机|电脑|平板|相机|微单|笔记本|键盘|鼠标|显示器|音响|音箱|硬盘|U盘|内存|显卡|主板|CPU|游戏|办公|投影|电视|Switch|PS5|xbox|掌机|手柄/.test(q)) {
+      return {
+        questions: [
+          '主要用于游戏娱乐还是工作学习？',
+          '便携性和性能，你更倾向哪个？',
+          '有没有品牌偏好或者想避开哪些品牌？',
+        ],
+        answers: [
+          ['游戏为主 🎮', '办公/学习为主 💼', '影音娱乐 🎬', '创作/设计 🎨'],
+          ['性能优先 💪', '便携优先 🪶', '两者兼顾 ⚖️'],
+          ['没有特别要求 😐', '倾向苹果生态 🍎', '避开小米 ❌', '避开华为 ❌', '避开三星 ❌'],
+        ],
+      };
+    }
+
+    // ===== 运动/健康/户外场景 =====
+    if (/跑步|瑜伽|健身|运动|哑铃|瑜伽垫|跳绳|椭圆机|跑步机|动感单车|登山|徒步|露营|骑行|滑雪|游泳|球拍|羽毛球|乒乓球|篮球|足球|蛋白粉|补剂|体脂秤|手环|手表|智能穿戴/.test(q)) {
+      return {
+        questions: [
+          '你的运动基础和频率大概是？',
+          '主要在家里练还是去健身房/户外？',
+          '预算里包含配件装备吗还是只算主器材？',
+        ],
+        answers: [
+          ['完全新手 🐣', '偶尔运动（每周1-2次）🏃', '规律运动（每周3次+）💪'],
+          ['居家锻炼 🏠', '健身房 🏋️', '户外运动 🌲', '混合模式 🔀'],
+          ['只买主器材（如跑步机本身）🏃', '主器材+配件一起配齐 🎒'],
+        ],
+      };
+    }
+
+    // ===== 服装/穿搭场景 =====
+    if (/衣服|裤子|鞋子|外套|羽绒服|大衣|卫衣|T恤|裙子|包包|鞋|运动鞋|皮鞋|高跟鞋|帆布鞋|内衣|睡衣|泳衣|帽子|围巾|眼镜|首饰|项链|戒指|手链/.test(q)) {
+      return {
+        questions: [
+          '穿着者的身高体型可以描述一下吗？',
+          '偏好的风格大概是什么方向？',
+          '这个单品主要是日常穿还是特殊场合？',
+        ],
+        answers: [
+          ['娇小型（160cm以下）🌸', '标准身材（160-175cm）⚖️', '高大身材（175cm以上）🏔️'],
+          ['简约百搭 🤍', '潮流时尚 🔥', '商务正式 💼', '休闲舒适 😌', '复古文艺 📻'],
+          ['日常通勤/上学 🚌', '约会/聚会 🥂', '运动/户外 🏃', '正式场合 🎩'],
+        ],
+      };
+    }
+
+    // ===== 通用兜底 =====
+    return {
+      questions: [
+        '最看重的使用场景是什么？',
+        '对品质和预算的权衡，你倾向哪边？',
+        '有没有一定要避开的品牌？',
+      ],
+      answers: [
+        ['日常家用 🏠', '外出携带 🚶', '送人/礼物 🎁', '专业用途 💼'],
+        ['性价比优先 💰', '品质优先 ✨', '均衡考虑 ⚖️'],
+        ['没有特别 😊', '避开小米', '避开华为', '避开苹果'],
+      ],
+    };
+  }
+
+  // 当前生效的追问配置（根据已提交的查询动态生成）
+  const currentFollowUp = useMemo(() => buildFollowUpQuestions(submittedQuery), [submittedQuery]);
+  const FOLLOW_UP_QUESTIONS = currentFollowUp.questions;
+  const FOLLOW_UP_PRESET_ANSWERS = currentFollowUp.answers;
 
   const renderRecommendations = () => {
     if (object?.intent !== 'recommend') return null;

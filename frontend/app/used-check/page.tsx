@@ -271,7 +271,7 @@ export default function UsedCheckPage() {
   // 离线兜底状态
   const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalUsedCheckResult> | null>(null);
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search'),
+    api: apiUrl('/api/search/stream'),
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);
@@ -288,6 +288,18 @@ export default function UsedCheckPage() {
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const hasResult = object?.intent === 'used_market';
+
+  // ★ 超时兜底：AI 请求超过 18 秒无结果 → 自动展示本地模拟数据
+  useEffect(() => {
+    if (!isLoading || localResult || hasResult) return;
+    const timer = setTimeout(() => {
+      console.warn('[UsedCheck] ⏰ AI 响应超时(18s)，启用本地兜底');
+      if (!hasResult) {
+        setLocalResult(generateLocalUsedCheckResult(submittedQuery || description));
+      }
+    }, 18000);
+    return () => clearTimeout(timer);
+  }, [isLoading, localResult, hasResult]);
 
   useEffect(() => {
     if (hasResult && resultsRef.current) {

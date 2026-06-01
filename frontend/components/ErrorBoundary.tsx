@@ -85,11 +85,11 @@ export class ErrorBoundary extends Component<Props, State> {
               分析过程中遇到了意外状况，AI 实验室正在努力修复中。您可以尝试重新加载页面。
             </p>
 
-            {/* 错误详情（仅开发环境展示） */}
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {/* 错误详情（始终展示，便于诊断） */}
+            {this.state.error && (
               <details className="mt-4 rounded-lg border border-amber-200 bg-white p-3 text-left">
                 <summary className="cursor-pointer text-xs font-medium text-amber-500">
-                  错误详情（开发模式）
+                  错误详情（点击展开）
                 </summary>
                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-gray-600">
                   {this.state.error.message}

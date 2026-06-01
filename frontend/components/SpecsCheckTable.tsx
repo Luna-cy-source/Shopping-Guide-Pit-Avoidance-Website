@@ -13,10 +13,17 @@ interface SpecsCheckItem {
 
 interface SpecsCheckTableProps {
   items: SpecsCheckItem[];
+  isLoading?: boolean;
 }
 
-export default function SpecsCheckTable({ items }: SpecsCheckTableProps) {
+export default function SpecsCheckTable({ items, isLoading }: SpecsCheckTableProps) {
   if (!items || items.length === 0) return null;
+
+  // 检查数据是否有效（所有字段都为空说明 AI 尚未返回完整内容）
+  const hasEmptyData = items.every(
+    (item) => (!item.officialClaim || item.officialClaim.trim() === '...') &&
+                 (!item.truth || item.truth.trim() === '...')
+  );
 
   return (
     <section className="space-y-3">
@@ -42,11 +49,36 @@ export default function SpecsCheckTable({ items }: SpecsCheckTableProps) {
         <span className="rounded-full bg-amber-50 px-2 text-xs font-normal text-amber-500">
           {items.length} 项参数
         </span>
+        {hasEmptyData && isLoading && (
+          <span className="rounded-full bg-blue-50 px-2 text-[10px] font-normal text-blue-500 animate-pulse">
+            分析中...
+          </span>
+        )}
       </div>
 
       <p className="text-xs text-gray-400">
         厂家宣传往往避重就轻。以下是对比厂商宣称与实际真相的「扒皮」清单：
       </p>
+
+      {/* 数据尚未就绪时显示骨架屏 */}
+      {hasEmptyData && isLoading ? (
+        <div className="overflow-hidden rounded-xl border border-amber-200 bg-white p-4">
+          <div className="space-y-3">
+            {items.map((_, i) => (
+              <div key={i} className="animate-pulse space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-5 w-5 rounded bg-amber-100" />
+                  <div className="h-4 w-28 rounded bg-gray-200" />
+                </div>
+                <div className="ml-7 flex gap-3">
+                  <div className="h-12 flex-1 rounded-md bg-gray-100" />
+                  <div className="h-12 flex-1 rounded-md bg-red-50" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : ( <>
 
       {/* 桌面表格 */}
       <div className="overflow-hidden rounded-xl border border-amber-200 bg-white">
@@ -145,6 +177,8 @@ export default function SpecsCheckTable({ items }: SpecsCheckTableProps) {
           ))}
         </div>
       </div>
+      </>
+      )}
     </section>
   );
 }

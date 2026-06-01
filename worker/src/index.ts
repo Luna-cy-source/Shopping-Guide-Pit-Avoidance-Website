@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { generateObject } from 'ai';
-import { createDeepSeek } from '@ai-sdk/deepseek';
 import type { Env } from './types';
 import {
   LLMResponseSchema,
@@ -70,7 +68,7 @@ app.get('/', (c) => {
 </head>
 <body>
 <div class="card">
-  <h1>🛡️ AI 避坑导购 Worker</h1>
+  <h1>AI 避坑导购 Worker</h1>
   <p class="subtitle">RAG 消费避坑分析 API 服务</p>
   <div class="status online"><span class="dot"></span> 服务运行中</div>
 
@@ -85,7 +83,7 @@ app.get('/', (c) => {
     </div>
     <div class="info-item">
       <div class="info-label">LLM 引擎</div>
-      <div class="info-value">Llama 3.3 70B (Workers AI)</div>
+      <div class="info-value">DeepSeek 原生流式 + Llama 8B 兜底</div>
     </div>
     <div class="info-item">
       <div class="info-label">运行环境</div>
@@ -151,33 +149,538 @@ app.get('/', (c) => {
 });
 
 // ============================================
-// 核心系统提示词（步骤D）
+// 多 Intent 系统提示词模板
 // ============================================
-const SYSTEM_PROMPT = `你是专业中立、真实靠谱、接地气的AI避坑导购专家。核心使命是帮普通用户避开消费套路、智商税。
-【核心原则】：
-- 避坑优先：优先拆解隐形短板、营销陷阱。
+
+/** 通用原则（所有 Intent 共享） */
+const BASE_PRINCIPLES = `【核心原则】：
+- 避坑优先：优先拆解隐形短板、营销陷阱、参数虚标。
 - 客观中立：禁止恰饭，缺点必须直白点明。
 - 语言接地气：用大白话，不堆砌参数。
 - 绝对红线：禁止模棱两可，必须有明确判断。
+- 长度控制：每个字段精简扼要，严禁超过 50-80 字的长篇论述。
 
-【输出要求 — 严格控制长度防止截断】：
-1. 每个字段精简扼要，严禁冗余展开。
-2. 图片：imageUrl 和 productImage.url，无图时均填"null"。
-3. SKU：skus 输出 2-3 个最常见配置即可。
-4. 参数透视 specsCheck：2-3 个核心虚标参数，简明对比。
-5. 雷达图 visData.flawRadar：5 个维度即可。
-6. 比价 priceReference：2-3 个平台活动价。
-7. 坑点 flaws：3-4 条核心坑点，每条控制在 50 字内。
-8. 替代品 alternatives：2 个即可。
-9. productVariants：3-4 个核心 SKU 维度。
-10. 禁止「因人而异」「建议根据自身需求」等空话。
+【通用约束】：
+1. 只输出 JSON，不要任何 Markdown 代码块、不要解释文字。
+2. 所有中文字段使用简体中文。
+3. 如果某些信息确实未知，填合理默认值而非乱编。
+4. 禁止在 JSON 前后输出任何其他内容。`;
 
-【格式要求】：
-输出必须是合法 JSON，不要 Markdown 代码块。`;
+/** Intent: product — 单品深度分析 */
+const PRODUCT_SCHEMA = `【当前模式：单品分析（intent='product'）】
+
+输出格式：
+{
+  "intent": "product",
+  "productName": "商品全称",
+  "category": "所属品类",
+  "imageUrl": "无图填null",
+  "productImage": { "url": "同imageUrl", "alt": "商品名称" },
+  "score": "避坑综合评分 0-10（越低越需避坑，6分以下=严重避坑）",
+  "summary": "一句话总结建议，不超过80字",
+  "sourceStats": { "sampleSize": 800-3000, "platforms": ["京东","淘宝","小红书"] },
+  "skus": [
+    { "name": "SKU型号", "priceStr": "¥价格", "specs": "核心参数", "specificFlaw": "该SKU特有坑点(可选)" }
+  ](2-3个),
+  "specsCheck": [
+    { "specName": "参数名", "officialClaim": "厂商宣称", "truth": "真实情况" }
+  ](2-3项),
+  "visData": { "flawRadar": { "labels": ["性价比","品质","售后","成分","口碑"], "scores": [1-10各分数] } },
+  "priceReference": [
+    { "platform": "平台名", "price": 数字价格 }
+  ](2-3个平台),
+  "flaws": [
+    { "title": "坑点标题", "quote": "引用评价原文", "analysis": "深度分析" }
+  ](3-4个),
+  "alternatives": [
+    { "productName": "替代品", "price": "价格", "advantage": "主要优势≤40字" }
+  ](2个),
+  "productVariants": [
+    { "dimension": "维度名", "values": ["选项1","选项2"] }
+  ](3-4个)
+}
+
+【单品约束】：score范围0-10；flaws必须是含title/quote/analysis的对象数组；priceReference的price必须是数字。`;
+
+/** Intent: recommend — 选品推荐（诊所模式） */
+const RECOMMEND_SCHEMA = `【当前模式：选品推荐（intent='recommend'）】
+
+输出格式：
+{
+  "intent": "recommend",
+  "userProfile": "用户画像摘要（预算、场景、偏好等，一句话概括）",
+  "recommendations": [
+    {
+      "productName": "推荐商品名称",
+      "score": "综合评分 0-10",
+      "priceRange": "价格区间如 ¥2000-3000",
+      "reason": "推荐理由（为什么适合该用户）",
+      "compromise": "核心妥协点/坑点（必须直言不讳）"
+    }
+  ](3-5款)
+}
+
+【选品约束】：recommendations至少3款；每款的compromise必须诚实指出不足；score必须基于实际分析给出有理有据的数值（0-10）。`;
+
+/** Intent: used_market — 二手防坑鉴定 */
+const USED_MARKET_SCHEMA = `【当前模式：二手防坑鉴定（intent='used_market'）】
+
+输出格式：
+{
+  "intent": "used_market",
+  "productName": "被鉴定的二手商品名称",
+  "riskLevel": "整体风险等级，只能是以下三值之一：极高 / 中等 / 低",
+  "riskSummary": "风险概览总结，一段话概括二手交易中最需要警惕的核心风险",
+  "scamRoutines": [
+    {
+      "title": "骗局话术名称",
+      "routine": "骗子常见套路完整拆解（按时间线或步骤叙述）",
+      "counterMeasure": "应对措施（如何识破、具体操作建议）"
+    }
+  ](3-6种骗局),
+  "inspectionChecklist": [
+    {
+      "step": "验机步骤名称（如'核对序列号'）",
+      "detail": "具体操作说明（保姆级粒度，面向非专业用户）"
+    }
+  ](5-15步，按线下验机顺序排列)
+}
+
+【鉴定约束】：scamRoutines至少3条；inspectionChecklist至少5步且最多20步；riskLevel严格限定为"极高/中等/低"三值之一；验机步骤要具体可操作，不能泛泛而谈。`;
+
+/** Intent: compare — 1v1 对比 */
+const COMPARE_SCHEMA = `【当前模式：1v1对比（intent='compare'）】
+
+输出格式：
+{
+  "intent": "compare",
+  "productA": {
+    "productName": "商品A名称", "imageUrl": "图片链接或空字符串",
+    "score": "评分0-10", "priceRange": "价格区间",
+    "bestFor": "最适合的用户画像", "strengths": ["优势1","优势2"],
+    "weaknesses": ["槽点1","槽点2"]
+  },
+  "productB": {
+    "productName": "商品B名称", "imageUrl": "图片链接或空字符串",
+    "score": "评分0-10", "priceRange": "价格区间",
+    "bestFor": "最适合的用户画像", "strengths": ["优势1","优势2"],
+    "weaknesses": ["槽点1","槽点2"]
+  },
+  "comparisonTable": [
+    { "dimension": "对比维度", "resultA": "A的表现", "resultB": "B的表现", "winner": "A或B或tie" }
+  ](5-8个维度),
+  "verdict": "综合对比结论（一句话）",
+  "winner": "最终推荐 A 或 B 或 tie"
+}
+
+【对比约束】：comparisonTable至少5个维度；winner严格限定为A/B/tie；verdict要给出明确倾向性判断。`;
+
+/**
+ * 根据用户 Prompt 检测请求的 Intent 类型
+ * 返回对应的系统提示词
+ */
+function buildSystemPrompt(userPrompt: string): string {
+  const p = userPrompt.toLowerCase();
+
+  // 检测 intent 指令
+  if (p.includes("intent='used_market'") || p.includes('intent="used_market"') || p.includes('二手防坑') || p.includes('二手.*鉴定') || p.includes('验机') || /二手/.test(p) && /防|坑|鉴|骗|风险/.test(p)) {
+    return `你是专业的二手交易防坑专家。你的使命是帮助买家在二手交易中识别骗局、规避风险、掌握验机技巧。\n\n${BASE_PRINCIPLES}\n\n${USED_MARKET_SCHEMA}`;
+  }
+
+  if (p.includes("intent='recommend'") || p.includes('intent="recommend"') || p.includes('选品诊所') || p.includes('反向推荐')) {
+    return `你是专业的AI选品顾问。根据用户需求画像，反向推荐最匹配的商品，同时诚实列出每款的妥协点。\n\n${BASE_PRINCIPLES}\n\n${RECOMMEND_SCHEMA}`;
+  }
+
+  if (p.includes("intent='compare'") || p.includes('intent="compare"') || p.includes('1v1') || p.includes('对比') || /vs|对决|PK|哪个好|选哪个/.test(p) && !p.includes('category')) {
+    return `你是中立的产品对比分析师。从多个维度客观对比两款商品的优劣，给出明确的购买建议。\n\n${BASE_PRINCIPLES}\n\n${COMPARE_SCHEMA}`;
+  }
+
+  // 默认：单品分析
+  return `你是专业中立、真实靠谱、接地气的AI避坑导购专家。核心使命是帮普通用户避开消费套路、智商税。\n\n${BASE_PRINCIPLES}\n\n${PRODUCT_SCHEMA}`;
+}
 
 
 // ============================================
-// POST /api/search — RAG 检索 + 流式输出
+// 超时常量
+// ============================================
+const DEEPSEEK_TIMEOUT = 20_000; // DeepSeek 单次请求超时 20s
+const WA_TIMEOUT = 15_000;       // Workers AI 兜底超时 15s
+
+// ============================================
+// 核心分析引擎（供 POST 后台 & GET 轮询复用）
+// 将结果写入 D1 search_cache，成功时 key = queryHash，失败时写入 error
+// ============================================
+async function runAIAnalysis(
+  query: string,
+  queryHash: string,
+  userPrompt: string,
+  env: Env,
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+
+  // --- DeepSeek（主力，非流式）---
+  const tryDeepSeek = async (): Promise<unknown> => {
+    const apiKey = env.DEEPSEEK_API_KEY;
+    const baseURL = env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+
+    if (!apiKey) {
+      console.warn('[DeepSeek] ⚠️ DEEPSEEK_API_KEY 未配置，跳过直接使用 Workers AI 兜底');
+      throw new Error('DEEPSEEK_API_KEY_MISSING');
+    }
+
+    console.log(`[DeepSeek] 🚀 请求 → ${baseURL} (超时=${DEEPSEEK_TIMEOUT/1000}s)`);
+    const t0 = Date.now();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.warn(`[DeepSeek] ⏰ 超时，取消请求`);
+      controller.abort();
+    }, DEEPSEEK_TIMEOUT);
+
+    try {
+      const apiResponse = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: buildSystemPrompt(userPrompt) },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.6,
+          max_tokens: 2048,         // 增加到 2048，防止复杂分析被截断
+          stream: false,            // ★ 非流式：更简单、更快、无 SSE 解析开销
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`[DeepSeek] ⏱️ 完成 | ${Date.now() - t0}ms | status=${apiResponse.status}`);
+
+      if (!apiResponse.ok) {
+        const errBody = await apiResponse.text().catch(() => '(unreadable)');
+        console.error(`[DeepSeek] ❌ HTTP ${apiResponse.status}: ${errBody.slice(0, 300)}`);
+        throw new Error(`DEEPSEEK_HTTP_${apiResponse.status}`);
+      }
+
+      const json: any = await apiResponse.json();
+      const fullText = json?.choices?.[0]?.message?.content || '';
+      console.log(`[DeepSeek] 📝 内容长度=${fullText.length} | 总耗时=${Date.now() - t0}ms`);
+
+      if (!fullText || fullText.length < 30) {
+        throw new Error('DEEPSEEK_EMPTY_RESPONSE');
+      }
+
+      return parseAIResponse(fullText, query);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if ((err as Error)?.name === 'AbortError') {
+        throw new Error('DEEPSEEK_TIMEOUT');
+      }
+      throw err;
+    }
+  };
+
+  // --- Workers AI（兜底）---
+  const tryWorkersAI = async (): Promise<unknown> => {
+    console.log('[Workers AI] Llama 8B 兜底...');
+    const t0 = Date.now();
+
+    const aiResponse = await Promise.race([
+      env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+        messages: [
+          { role: 'system', content: buildSystemPrompt(userPrompt) },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 2048,
+        temperature: 0.6,
+      }) as Promise<{ response?: string }>,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('LLM_TIMEOUT')), WA_TIMEOUT)),
+    ]);
+
+    console.log(`[Workers AI] ⏱️ 完成 | ${Date.now() - t0}ms`);
+
+    const rawText = aiResponse.response ?? '';
+    if (!rawText || rawText.length < 30) throw new Error('WA_EMPTY_RESPONSE');
+
+    return parseAIResponse(rawText, query);
+  };
+
+  // ---- 执行 ----
+  try {
+    const data = await tryDeepSeek();
+    // 图片 URL 替换为代理地址 + 写入缓存
+    const processed = processImageUrls(data, env);
+    await env.DB.prepare(
+      'INSERT OR IGNORE INTO search_cache (query_hash, response_json, created_at) VALUES (?, ?, ?)'
+    ).bind(queryHash, JSON.stringify(processed), Date.now()).run();
+    console.log(`[SearchJob] ✅ 完成 | hash=${queryHash.slice(0, 8)}`);
+    return { success: true, data: processed };
+  } catch (dsErr) {
+    const dsMsg = dsErr instanceof Error ? dsErr.message : String(dsErr);
+    console.error(`[主流程] DeepSeek 失败: ${dsMsg}，尝试 Workers AI 兜底...`);
+
+    try {
+      const data = await tryWorkersAI();
+      const processed = processImageUrls(data, env);
+      await env.DB.prepare(
+        'INSERT OR IGNORE INTO search_cache (query_hash, response_json, created_at) VALUES (?, ?, ?)'
+      ).bind(queryHash, JSON.stringify(processed), Date.now()).run();
+      console.log(`[SearchJob] ✅ 兜底完成 | hash=${queryHash.slice(0, 8)}`);
+      return { success: true, data: processed };
+    } catch (waErr) {
+      const waMsg = waErr instanceof Error ? waErr.message : String(waErr);
+      console.error(`[主流程] Workers AI 兜底也失败: ${waMsg}`);
+      return { success: false, error: waMsg };
+    }
+  }
+}
+
+// ============================================
+// JSON 解析 + 字段补全（从 AI 返回值提取并标准化 JSON 对象）
+// ============================================
+function parseAIResponse(fullText: string, query: string): Record<string, any> {
+  // 步骤1：清洗文本，提取 JSON
+  let cleaned = fullText.trim();
+
+  // 移除 Markdown 代码块包裹
+  cleaned = cleaned
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?\s*```\s*$/i, '')
+    .trim();
+
+  // 找到第一个 { 和最后一个 } 之间的内容
+  const fb = cleaned.indexOf('{');
+  const lb = cleaned.lastIndexOf('}');
+  if (fb !== -1 && lb !== -1 && lb > fb) {
+    cleaned = cleaned.slice(fb, lb + 1);
+  }
+
+  // 步骤2：尝试解析 JSON（含修复）
+  let parsed: Record<string, any> | null = null;
+
+  // 方案A：直接解析
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // 方案B：修复未闭合的括号
+    let fixed = cleaned;
+    const openBraces = (fixed.match(/\{/g) || []).length;
+    const closeBraces = (fixed.match(/\}/g) || []).length;
+    const openBrackets = (fixed.match(/\[/g) || []).length;
+    const closeBrackets = (fixed.match(/\]/g) || []).length;
+
+    for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+    for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+
+    // 移除末尾逗号
+    fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+
+    try {
+      parsed = JSON.parse(fixed);
+      console.log('[AI] 🔧 JSON 修复成功（补全括号）');
+    } catch {
+      // 方案C：尝试正则提取必需字段
+      console.error('[AI] JSON 完全无法解析，尝试正则提取');
+      parsed = extractWithRegex(cleaned, query);
+    }
+  }
+
+  if (!parsed) {
+    throw new Error('DEEPSEEK_JSON_PARSE_FAIL');
+  }
+
+  // 步骤3：补全缺失字段
+  return applyDefaults(parsed, query);
+}
+
+/**
+ * 正则兜底提取：当 JSON 完全无法解析时，用正则捞出关键信息
+ */
+function extractWithRegex(text: string, query: string): Record<string, any> {
+  const extract = (pattern: RegExp, group = 1): string => {
+    const m = text.match(pattern);
+    return m ? m[group].trim() : '';
+  };
+
+  return {
+    productName: extract(/"productName"\s*:\s*"([^"]+)"/)
+      || extract(/商品名[称]?[：:]\s*([^\n，。]+)/)
+      || query,
+    category: extract(/"category"\s*:\s*"([^"]+)"/)
+      || extract(/品类[：:]\s*([^\n，。]+)/)
+      || '未知品类',
+    score: parseInt(extract(/"score"\s*:\s*(\d+)/)) || 45,
+    summary: extract(/"summary"\s*:\s*"([^"]+)"/)
+      || extract(/总结[：:]\s*([^\n]+)/)
+      || '分析数据解析异常，建议重新查询。',
+    flaws: [],
+    skus: [],
+    specsCheck: [],
+    alternatives: [],
+    imageUrl: 'null',
+    productImage: { url: 'null' },
+    priceReference: [],
+    visData: { flawRadar: { labels: ['性价比', '温和度', '保湿力', '有效成分', '通用度'], scores: [3, 3, 3, 3, 3] } },
+    productVariants: [],
+  };
+}
+
+/**
+ * 字段默认值补全 + 格式规范化
+ * 将 AI 返回的任意格式统一转为前端期望的标准格式
+ */
+function applyDefaults(parsed: Record<string, any>, query: string): Record<string, any> {
+  // ===== score: 归一化到 0-10 =====
+  let score = typeof parsed.score === 'number' ? parsed.score
+    : parseInt(String(parsed.score || '')) || 0;
+  if (score > 10) score = Math.round(score / 10); // 0-100 → 0-10
+  score = Math.max(0, Math.min(10, score));
+
+  // ===== sourceStats =====
+  const sourceStats = parsed.sourceStats || { sampleSize: 1200, platforms: ['京东', '淘宝'] };
+
+  // ===== flaws: 兼容字符串数组 & 对象数组 =====
+  const normalizedFlaws = (Array.isArray(parsed.flaws) ? parsed.flaws : [])
+    .slice(0, 5)
+    .map((f: any) => {
+      if (typeof f === 'string') {
+        return { title: f, analysis: f, quote: null };
+      }
+      return {
+        title: f?.title || f?.analysis || f?.description || '未知坑点',
+        analysis: f?.analysis || f?.title || f?.description || '',
+        quote: f?.quote || null,
+      };
+    });
+
+  // ===== alternatives: {name→productName, reason→advantage} =====
+  const normalizedAlternatives = (Array.isArray(parsed.alternatives) ? parsed.alternatives : [])
+    .slice(0, 3)
+    .map((a: any) => ({
+      productName: a?.productName || a?.name || a?.title || '未知替代品',
+      price: a?.price || a?.cost || '价格未知',
+      advantage: a?.advantage || a?.reason || a?.description || a?.analysis || '无详细理由',
+    }));
+
+  // ===== skus: {spec→name, price+activityPrice→priceStr, spec→specs} =====
+  const normalizedSkus = (Array.isArray(parsed.skus) ? parsed.skus : [])
+    .slice(0, 4)
+    .map((s: any) => ({
+      name: s?.name || s?.spec || s?.title || '默认规格',
+      priceStr: s?.priceStr || `约¥${s?.activityPrice || s?.price || s?.salePrice || '暂无数据'}`,
+      specs: s?.specs || s?.spec || s?.description || s?.name || '暂无参数',
+      specificFlaw: s?.specificFlaw || null,
+    }));
+
+  // ===== specsCheck: {name→specName, description→truth} =====
+  const normalizedSpecsCheck = (Array.isArray(parsed.specsCheck) ? parsed.specsCheck : [])
+    .slice(0, 4)
+    .map((s: any) => ({
+      specName: s?.specName || s?.name || s?.title || '未知参数',
+      officialClaim: s?.officialClaim || s?.claim || s?.promise || '厂商未明确标注',
+      truth: s?.truth || s?.description || s?.detail || s?.value || s?.analysis || '暂无数据',
+    }));
+
+  // ===== priceReference: activityPrice(string)→price(number) =====
+  const normalizedPriceRefs = (Array.isArray(parsed.priceReference) ? parsed.priceReference : [])
+    .slice(0, 4)
+    .map((p: any) => {
+      let priceNum: number | undefined;
+      if (typeof p?.price === 'number') {
+        priceNum = p.price;
+      } else {
+        const raw = String(p?.price || p?.activityPrice || p?.salePrice || '');
+        const matched = raw.match(/[\d.]+/);
+        priceNum = matched ? parseFloat(matched[0]) : undefined;
+      }
+      return {
+        platform: p?.platform || '京东',
+        price: priceNum,
+      };
+    })
+    .filter((p: any) => typeof p.price === 'number' && !isNaN(p.price));
+
+  // ===== visData.flawRadar: {labels, scores} → Record<string, number> =====
+  const rawRadar = parsed.visData?.flawRadar || {};
+  let flawRadar: Record<string, number> = {};
+  // 如果是 Record<string, number> 格式（非 {labels, scores}）
+  const hasLabels = Array.isArray(rawRadar.labels) && rawRadar.labels.length > 0;
+  const hasScores = Array.isArray(rawRadar.scores) && rawRadar.scores.length > 0;
+  if (hasLabels && hasScores) {
+    rawRadar.labels.forEach((label: string, i: number) => {
+      flawRadar[label] = typeof rawRadar.scores[i] === 'number' ? rawRadar.scores[i] : 5;
+    });
+  } else if (typeof rawRadar === 'object' && !Array.isArray(rawRadar)) {
+    // 已经是 Record<string, number> 格式，直接使用
+    const entries = Object.entries(rawRadar).filter(
+      ([, v]) => typeof v === 'number' && !isNaN(v)
+    );
+    if (entries.length > 0) {
+      flawRadar = Object.fromEntries(entries) as Record<string, number>;
+    } else {
+      flawRadar = { '性价比': 4, '品质': 3, '售后': 3, '成分': 4, '口碑': 4 };
+    }
+  } else {
+    flawRadar = { '性价比': 4, '品质': 3, '售后': 3, '成分': 4, '口碑': 4 };
+  }
+
+  return {
+    productName: String(parsed.productName || parsed.product_name || query),
+    category: String(parsed.category || parsed.type || '未知品类'),
+    imageUrl: String(parsed.imageUrl || parsed.image_url || 'null'),
+    productImage: {
+      url: String(parsed.productImage?.url || parsed.imageUrl || parsed.image_url || 'null'),
+      alt: String(parsed.productImage?.alt || parsed.productName || query),
+    },
+    score,
+    summary: String(parsed.summary || parsed.conclusion || '暂无总结'),
+    sourceStats,
+    skus: normalizedSkus,
+    specsCheck: normalizedSpecsCheck,
+    visData: { flawRadar },
+    priceReference: normalizedPriceRefs,
+    flaws: normalizedFlaws,
+    alternatives: normalizedAlternatives,
+    productVariants: Array.isArray(parsed.productVariants) ? parsed.productVariants.slice(0, 4) : [],
+  };
+}
+
+// ============================================
+// 图片 URL 处理 + 后台缓存
+// ============================================
+function processImageUrls(data: unknown, _env: Env): unknown {
+  const imageUrlsToCache: string[] = [];
+  let jsonStr = JSON.stringify(data);
+  jsonStr = jsonStr.replace(/"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g, (_m, k, u) => {
+    if (u.startsWith('http://') || u.startsWith('https://')) {
+      imageUrlsToCache.push(u);
+      return `"${k}":"/api/image-proxy?url=${encodeURIComponent(u)}"`;
+    }
+    return _m;
+  });
+  // fire-and-forget 图片缓存（不阻塞）
+  if (imageUrlsToCache.length > 0) {
+    Promise.allSettled(imageUrlsToCache.map((u) => downloadAndCacheImage(_env.IMAGE_CACHE, u)));
+  }
+
+  // ★ 自动补全 intent 字段（前端渲染依赖此字段判断商品/品类模式）
+  let parsed: Record<string, any>;
+  try { parsed = JSON.parse(jsonStr); } catch { return data; }
+  if (!parsed.intent) {
+    if (parsed.productName) parsed.intent = 'product';
+    else if (parsed.category || parsed.comparisons) parsed.intent = 'category';
+  }
+  return parsed;
+}
+
+// ============================================
+// POST /api/search — 异步 Job 模式
+//   1. 缓存命中 → 立即返回 { jobId, status:"done", data }
+//   2. 缓存未命中 → waitUntil 后台处理，立即返回 { jobId, status:"processing" }
+//   前端用 GET /api/search/result 轮询
 // ============================================
 app.post('/api/search', async (c) => {
   try {
@@ -197,881 +700,446 @@ app.post('/api/search', async (c) => {
       return c.json({ error: '查询内容过长，最多 2000 个字符' }, 400);
     }
 
-    // ---- 1.5 后台异步：记录搜索日志到 D1（供 Cron 定时分析高频未覆盖商品）----
-    c.executionCtx.waitUntil(
-      (async () => {
-        try {
-          const hashBuffer = await crypto.subtle.digest(
-            'SHA-256',
-            new TextEncoder().encode(query),
-          );
-          const hashHex = Array.from(new Uint8Array(hashBuffer))
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('');
-          await c.env.DB.prepare(
-            'INSERT INTO search_logs (query_text, query_hash, created_at) VALUES (?, ?, ?)',
-          )
-            .bind(query, hashHex, Date.now())
-            .run();
-        } catch (err) {
-          console.error('[搜索日志] 写入失败 (非阻塞):', err);
-        }
-      })(),
-    );
+    // ---- 2. 查询哈希 ----
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(query));
+    const queryHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    // ---- 2. 步骤 A+B：混合检索（D1 关键词精准匹配 + Vectorize 语义检索）----
-    const { context } = await retrieveContext(
-      query,
-      c.env.AI,
-      c.env.KNOWLEDGE_VECTOR,
-      c.env.DB,
-    );
-
-    // ---- 3. 步骤 C：组装用户消息（注入检索上下文）----
-    const userPrompt = context
-      ? `用户的查询问题：${query}
-
----
-以下是从海量真实用户评价中检索到的相关参考信息，请你务必结合这些信息进行分析：
-${context}
----
-
-请你严格按照系统提示词的【核心原则】要求，对用户查询进行深度分析。最终输出必须是纯 JSON 格式，严格匹配我定义的 Schema，不要输出任何 Markdown 包裹（不要 \`\`\`json）。`
-      : `用户的查询问题：${query}
-
-注意：当前未能检索到相关的真实用户评价数据。请你基于自身的知识库进行分析，但必须在分析中如实告知用户"暂缺真实评价数据"这一点。
-
-请你严格按照系统提示词的【核心原则】要求，对用户查询进行深度分析。最终输出必须是纯 JSON 格式，严格匹配我定义的 Schema，不要输出任何 Markdown 包裹（不要 \`\`\`json）。`;
-
-    // ---- 5. 双模型：DeepSeek 优先（中文更快更准），失败 → Workers AI 兜底 ----
-    let rawText = '';
-    let usedFallback = false;
-
-    // ----------------------------------------------------------------
-    // 5.1 DeepSeek (generateObject) — 中文场景首选，速度快，质量高
-    // ----------------------------------------------------------------
-    const tryDeepSeek = async (): Promise<Response> => {
-      console.log('[DeepSeek] 开始生成...');
-
-      const deepseek = createDeepSeek({
-        apiKey: c.env.DEEPSEEK_API_KEY,
-        baseURL: c.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-      });
-
-      // 25s 超时（降低从35s）
-      const DS_TIMEOUT = 25_000;
-      const result = await Promise.race([
-        generateObject({
-          model: deepseek('deepseek-chat'),
-          schema: LLMResponseSchema,
-          system: SYSTEM_PROMPT,
-          prompt: userPrompt,
-          temperature: 0.7,
-          maxTokens: 2048,
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('LLM_TIMEOUT')), DS_TIMEOUT),
-        ),
-      ]);
-
-      const parsed = result.object;
-
-      // 图片 URL 代理替换（在序列化后的 JSON 字符串上操作）
-      const imageUrlsToCache: string[] = [];
-      let rawText = JSON.stringify(parsed);
-      rawText = rawText.replace(
-        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
-        (match, key: string, url: string) => {
-          try {
-            const decoded = url.replace(/\\(.)/g, '$1');
-            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-              imageUrlsToCache.push(decoded);
-              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
-            }
-          } catch { /* noop */ }
-          return match;
-        },
-      );
-
-      // 后台预热图片缓存
-      c.executionCtx.waitUntil(
-        (async () => {
-          const uniqueUrls = [...new Set(imageUrlsToCache)];
-          if (uniqueUrls.length > 0) {
-            await Promise.allSettled(
-              uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
-            );
-          }
-        })(),
-      );
-
-      // NDJSON 流：ai@^4 experimental_useObject 使用 ObjectStream 协议
-      // 每行必须是 { v: <完整对象> } 格式
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
-    };
-
-    // ----------------------------------------------------------------
-    // 5.2 Workers AI (Llama 3.3 70B) — DeepSeek 失败时的兜底方案
-    // ----------------------------------------------------------------
-    const tryWorkersAI = async (): Promise<Response> => {
-      console.log('[Workers AI] DeepSeek 失败，切换到 Workers AI 兜底...');
-
-      const WA_TIMEOUT = 20_000;
-      const aiResponse = await Promise.race([
-        c.env.AI.run(
-          '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-          {
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: userPrompt },
-            ],
-            max_tokens: 4096,
-            response_format: { type: 'json_object' },
-          },
-        ) as Promise<{ response?: string }>,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('LLM_TIMEOUT')), WA_TIMEOUT),
-        ),
-      ]);
-
-      rawText = aiResponse.response ?? '';
-      if (!rawText) throw new Error('empty_response');
-
-      console.log('[Workers AI] 响应前800字符:', rawText.slice(0, 800));
-
-      rawText = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-      const firstBrace = rawText.indexOf('{');
-      const lastBrace = rawText.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        rawText = rawText.slice(firstBrace, lastBrace + 1);
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch (parseErr) {
-        let fixed = rawText;
-        const openBraces = (fixed.match(/\{/g) || []).length;
-        const closeBraces = (fixed.match(/\}/g) || []).length;
-        const openBrackets = (fixed.match(/\[/g) || []).length;
-        const closeBrackets = (fixed.match(/\]/g) || []).length;
-        for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
-        for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
-        if (fixed.endsWith(',')) fixed = fixed.slice(0, -1) + '}';
-        try {
-          parsed = JSON.parse(fixed);
-        } catch {
-          console.error('[Workers AI] JSON 解析失败，原始文本:', rawText.slice(0, 1200));
-          throw parseErr;
-        }
-      }
-
-      const imageUrlsToCache: string[] = [];
-      rawText = rawText.replace(
-        /"(imageUrl|url)"\s*:\s*"(https?:\/\/[^\n\r"]+)"/g,
-        (match, key: string, url: string) => {
-          try {
-            const decoded = url.replace(/\\(.)/g, '$1');
-            if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-              imageUrlsToCache.push(decoded);
-              return `"${key}":"/api/image-proxy?url=${encodeURIComponent(decoded)}"`;
-            }
-          } catch { /* noop */ }
-          return match;
-        },
-      );
-
-      try { parsed = JSON.parse(rawText); } catch {
-        console.warn('[Workers AI] 图片 URL 替换后 JSON 解析失败，使用原解析结果');
-      }
-
-      c.executionCtx.waitUntil(
-        (async () => {
-          const uniqueUrls = [...new Set(imageUrlsToCache)];
-          if (uniqueUrls.length === 0) return;
-          await Promise.allSettled(
-            uniqueUrls.map((url) => downloadAndCacheImage(c.env.IMAGE_CACHE, url)),
-          );
-        })(),
-      );
-
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify({ v: parsed }) + '\n'));
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
-    };
-
-    // ---- 调用：DeepSeek 优先 → Workers AI 兜底 ----
+    // ---- 3. D1 缓存命中 → 秒返回 ----
     try {
-      return await tryDeepSeek();
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.log(`[DeepSeek] 失败 (${errMsg.slice(0, 100)})，切 Workers AI...`);
+      const cachedRow = await c.env.DB.prepare(
+        `SELECT response_json FROM search_cache WHERE query_hash = ?1 ORDER BY created_at DESC LIMIT 1`,
+      ).bind(queryHash).first<{ response_json: string }>();
 
-      try {
-        return await tryWorkersAI();
-      } catch (waErr) {
-        const waMsg = waErr instanceof Error ? waErr.message : String(waErr);
-        console.error('[Workers AI] 也失败:', waMsg);
-
-        if (errMsg === 'LLM_TIMEOUT' || waMsg === 'LLM_TIMEOUT') {
-          return c.json({ error: 'AI 分析耗时过长，请简化搜索词后重试。', code: 'TIMEOUT' }, 504);
+      if (cachedRow?.response_json) {
+        const parsed = JSON.parse(cachedRow.response_json);
+        // ★ 缓存中的错误记录不视为"命中"，允许重新分析
+        if (!parsed._error) {
+          console.log(`[缓存命中] query="${query.slice(0, 50)}" | hash=${queryHash.slice(0, 8)}`);
+          return c.json({
+            jobId: queryHash,
+            status: 'done',
+            data: parsed,
+          });
         }
-        if (/40[13]/.test(errMsg) || /40[13]/.test(waMsg)) {
-          return c.json({ error: 'AI 服务认证异常，正在修复。', code: 'AUTH_ERROR' }, 502);
-        }
-        return c.json({ error: 'AI 暂不可用，请稍后重试。', code: 'FAILED' }, 500);
+        console.log(`[缓存] 发现过期错误记录，清除并重新分析 | hash=${queryHash.slice(0, 8)}`);
       }
+    } catch (err) {
+      console.error('[D1缓存] 读取失败:', err);
     }
+
+    // ---- 4. 后台记录搜索日志 ----
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare('INSERT INTO search_logs (query_text, query_hash, created_at) VALUES (?, ?, ?)')
+        .bind(query, queryHash, Date.now()).run().catch(() => {}),
+    );
+
+    // ---- 5. ★ 同步执行 AI 分析（不再使用 waitUntil，避免 Free plan 超时）----
+    console.log(`[SearchJob] 🔍 同步分析 | query="${query.slice(0, 50)}" | hash=${queryHash.slice(0, 8)}`);
+
+    try {
+      // 5.1 混合检索（有 5 秒超时保护）
+      let context = '';
+      try {
+        const ctxResult = await Promise.race([
+          retrieveContext(query, c.env.AI, c.env.KNOWLEDGE_VECTOR, c.env.DB),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('CTX_TIMEOUT')), 5000)),
+        ]);
+        context = ctxResult.context;
+      } catch (ctxErr) {
+        console.warn(`[SearchJob] 检索超时/失败，跳过上下文 | ${(ctxErr as Error)?.message}`);
+      }
+
+      // 5.2 组装 prompt
+      const userPrompt = context
+        ? `用户的查询问题：${query}\n\n---\n以下是从海量真实用户评价中检索到的相关参考信息，请你结合这些信息进行分析：\n${context}\n---\n\n请按系统提示词要求深度分析。输出纯 JSON 格式，不要 Markdown 包裹。`
+        : `用户的查询问题：${query}\n\n注意：当前未能检索到相关评价数据。请基于自身知识库分析，但需如实告知用户"暂缺真实评价数据"。\n\n请按系统提示词要求深度分析。输出纯 JSON 格式，不要 Markdown 包裹。`;
+
+      // 5.3 执行 AI 分析（DeepSeek → Workers AI 兜底）
+      const result = await runAIAnalysis(query, queryHash, userPrompt, c.env);
+
+      if (result.success && result.data) {
+        console.log(`[SearchJob] ✅ 分析完成 | hash=${queryHash.slice(0, 8)}`);
+        return c.json({
+          jobId: queryHash,
+          status: 'done',
+          data: result.data,
+        });
+      } else {
+        console.error(`[SearchJob] ❌ 分析失败: ${result.error}`);
+        return c.json({
+          jobId: queryHash,
+          status: 'error',
+          error: result.error || 'AI 分析失败',
+        });
+      }
+    } catch (e) {
+      const errMsg = (e as Error)?.message || String(e);
+      console.error(`[SearchJob] 💥 异常: ${errMsg}`);
+      return c.json({
+        jobId: queryHash,
+        status: 'error',
+        error: errMsg,
+      });
+    }
+
   } catch (err) {
-    // 顶层兜底：未预期的异常
-    console.error('[顶层] 未预期的请求处理异常:', err);
+    console.error('[POST /api/search 顶层异常]:', err);
     return c.json({ error: '服务内部错误，请稍后重试' }, 500);
   }
 });
 
 // ============================================
-// GET /api/image-proxy — 图片代理与缓存端点
+// POST /api/search/stream — 同步流式（向后兼容）
+//   供 experimental_useObject 和 AiMascot 等旧页面使用
+//   返回 NDJSON 格式：{ v: data }\n
 // ============================================
-app.get('/api/image-proxy', async (c) => {
-  const url = c.req.query('url');
-  if (!url) {
-    return c.json({ error: '缺少 url 参数' }, 400);
-  }
-
-  // 解码原始图片 URL
-  let originalUrl: string;
+app.post('/api/search/stream', async (c) => {
   try {
-    originalUrl = decodeURIComponent(url);
-  } catch {
-    return c.json({ error: 'url 参数解码失败' }, 400);
-  }
+    let body: { query: string };
+    try { body = await c.req.json<{ query: string }>(); }
+    catch { return c.json({ error: '请求体必须是合法 JSON' }, 400); }
 
-  // 校验是否为合法 HTTP(S) URL
-  if (
-    !originalUrl.startsWith('https://') &&
-    !originalUrl.startsWith('http://')
-  ) {
-    return c.json({ error: '仅支持 http/https 图片链接' }, 400);
-  }
+    const query = (body.query ?? '').trim();
+    if (!query || query.length === 0) return c.json({ error: '查询内容不能为空' }, 400);
+    if (query.length > 2000) return c.json({ error: '查询内容过长' }, 400);
 
-  // 调用缓存模块：R2 命中 → 直接返回，未命中 → 下载 + 缓存 + 返回
-  const result = await getOrDownloadImage(c.env.IMAGE_CACHE, originalUrl);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(query));
+    const queryHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-  if (!result || !result.body) {
-    // 最终兜底：返回一张 1×1 SVG 占位图，前端 onError 会触发 ProductImage 降级 UI
-    // 不使用 302 重定向的原因：避免浏览器显示碎图图标
-    const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#f5f5f5"/></svg>`;
-    return new Response(fallbackSvg, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'no-cache, no-store',
-        'Access-Control-Allow-Origin': '*',
-        'X-Image-Fallback': 'true',
-      },
-    });
-  }
-
-  return new Response(result.body, {
-    status: result.status,
-    headers: {
-      'Content-Type': result.contentType,
-      'Cache-Control': result.cacheControl,
-      'Access-Control-Allow-Origin': '*',
-      'X-Image-Cache': result.cacheControl.includes('immutable')
-        ? 'HIT'
-        : 'MISS',
-    },
-  });
-});
-
-// ============================================
-// POST /api/feedback — 用户反馈闭环
-// ============================================
-app.post('/api/feedback', async (c) => {
-  try {
-    // 1. 解析请求体
-    let body: { query: string; flaw_title: string; vote: number };
+    // 缓存命中
     try {
-      body = await c.req.json();
-    } catch {
-      return c.json(
-        { error: '请求体必须是合法 JSON，格式: { "query", "flaw_title", "vote" }' },
-        400
-      );
-    }
+      const cachedRow = await c.env.DB.prepare(
+        'SELECT response_json FROM search_cache WHERE query_hash = ?1 ORDER BY created_at DESC LIMIT 1',
+      ).bind(queryHash).first<{ response_json: string }>();
+      if (cachedRow?.response_json) {
+        console.log(`[Stream缓存命中] query="${query.slice(0, 50)}"`);
+        return c.json({ v: JSON.parse(cachedRow.response_json) });
+      }
+    } catch {}
 
-    // 2. Zod 校验
-    const parsed = FeedbackRequestSchema.safeParse({
-      query: body.query,
-      flawTitle: body.flaw_title, // schema.ts 用 camelCase，接口用 snake_case
-      vote: body.vote,
-    });
-    if (!parsed.success) {
-      return c.json(
-        {
-          error: '参数校验失败',
-          details: parsed.error.flatten().fieldErrors,
-        },
-        400
-      );
-    }
+    // 记录日志
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare('INSERT INTO search_logs (query_text, query_hash, created_at) VALUES (?, ?, ?)')
+        .bind(query, queryHash, Date.now()).run().catch(() => {}),
+    );
 
-    // 3. 写入 D1
-    const { query, flawTitle, vote } = parsed.data;
-    try {
-      await c.env.DB.prepare(
-        'INSERT INTO flaw_feedback (query, flaw_title, vote) VALUES (?, ?, ?)'
-      )
-        .bind(query, flawTitle, vote)
-        .run();
-    } catch (dbErr) {
-      console.error('[反馈] D1 写入失败:', dbErr);
-      return c.json({ error: '反馈数据写入失败，请稍后重试' }, 500);
-    }
+    // 同步执行 AI 分析
+    const { context } = await retrieveContext(query, c.env.AI, c.env.KNOWLEDGE_VECTOR, c.env.DB);
+    const userPrompt = context
+      ? `用户的查询问题：${query}\n\n---\n以下是从海量真实用户评价中检索到的相关参考信息：\n${context}\n---\n\n请按系统提示词要求深度分析。输出纯 JSON 格式。`
+      : `用户的查询问题：${query}\n\n注意：当前未能检索到相关评价数据。请基于自身知识库分析。\n\n请按系统提示词要求深度分析。输出纯 JSON 格式。`;
 
-    // 4. 返回成功
-    return c.json({
-      success: true,
-      message: vote === 1 ? '感谢认可！' : vote === -1 ? '反馈已记录，我们会持续优化' : '反馈已记录',
-    });
+    const result = await runAIAnalysis(query, queryHash, userPrompt, c.env);
+    if (!result.success || !result.data) {
+      return c.json({ error: result.error || 'AI 分析失败' }, 500);
+    }
+    return c.json({ v: result.data });
   } catch (err) {
-    console.error('[反馈] 未预期的异常:', err);
+    console.error('[Stream] 异常:', err);
     return c.json({ error: '服务内部错误' }, 500);
   }
 });
 
 // ============================================
-// GET /api/trending — 返回近 7 天高频搜索词（供前端"热门检测"展示）
+// GET /api/search/result — 轮询 Job 结果
+//   前端每 2s 轮询一次，直到 status='done'
+// ============================================
+app.get('/api/search/result', async (c) => {
+  const jobId = c.req.query('jobId');
+  if (!jobId) {
+    return c.json({ error: '缺少 jobId 参数' }, 400);
+  }
+
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT response_json, created_at FROM search_cache WHERE query_hash = ?1 ORDER BY created_at DESC LIMIT 1`,
+    ).bind(jobId).first<{ response_json: string; created_at: number }>();
+
+    if (!row?.response_json) {
+      // ★ 调试信息：确认 D1 中确实没有此 hash 的记录
+      const countRow = await c.env.DB.prepare(
+        'SELECT COUNT(*) as total FROM search_cache WHERE query_hash = ?1'
+      ).bind(jobId).first<{ total: number }>();
+      return c.json({
+        jobId,
+        status: 'processing',
+        _debug: { cacheRowCount: countRow?.total ?? 0, hint: 'D1中无该hash记录，后台任务可能还在运行或已崩溃' },
+      });
+    }
+
+    const parsed = JSON.parse(row.response_json);
+
+    // 检查是否为错误标记
+    if (parsed._error) {
+      // ★ 错误缓存 5 分钟过期：超过 5 分钟的错误视为"可重试"，返回 processing
+      const ERROR_CACHE_TTL_MS = 5 * 60 * 1000;
+      const age = Date.now() - (row.created_at || 0);
+      if (age > ERROR_CACHE_TTL_MS) {
+        console.log(`[轮询] 错误缓存已过期（${(age / 1000).toFixed(0)}s），允许重试 | hash=${jobId.slice(0, 8)}`);
+        return c.json({ jobId, status: 'processing' });
+      }
+      return c.json({ jobId, status: 'error', error: parsed._error });
+    }
+
+    return c.json({ jobId, status: 'done', data: parsed });
+  } catch (err) {
+    console.error('[轮询] 查询失败:', err);
+    return c.json({ jobId, status: 'processing' });
+  }
+});
+
+// ============================================
+// GET /api/image-proxy
+// ============================================
+app.get('/api/image-proxy', async (c) => {
+  const url = c.req.query('url');
+  if (!url) return c.json({ error: '缺少 url 参数' }, 400);
+
+  let originalUrl: string;
+  try { originalUrl = decodeURIComponent(url); } catch { return c.json({ error: 'url 参数解码失败' }, 400); }
+
+  if (!originalUrl.startsWith('https://') && !originalUrl.startsWith('http://')) {
+    return c.json({ error: '仅支持 http/https 图片链接' }, 400);
+  }
+
+  const result = getOrDownloadImage(c.env.IMAGE_CACHE, originalUrl);
+
+  if (!result?.body) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="#f5f5f5"/></svg>`;
+    return new Response(svg, { status: 200, headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*', 'X-Image-Fallback': 'true' }});
+  }
+
+  return new Response(result.body, { status: result.status, headers: { 'Content-Type': result.contentType, 'Cache-Control': result.cacheControl, 'Access-Control-Allow-Origin': '*', 'X-Image-Cache': result.cacheControl.includes('immutable') ? 'HIT' : 'MISS' }});
+});
+
+// ============================================
+// POST /api/feedback
+// ============================================
+app.post('/api/feedback', async (c) => {
+  try {
+    let body: { query: string; flaw_title: string; vote: number };
+    try { body = await c.req.json(); } catch { return c.json({ error: '请求体必须是合法 JSON，格式: { "query", "flaw_title", "vote" }' }, 400); }
+
+    const parsed = FeedbackRequestSchema.safeParse({ query: body.query, flawTitle: body.flaw_title, vote: body.vote });
+    if (!parsed.success) return c.json({ error: '参数校验失败', details: parsed.error.flatten().fieldErrors }, 400);
+
+    const { query, flawTitle, vote } = parsed.data;
+    try { await c.env.DB.prepare('INSERT INTO flaw_feedback (query, flaw_title, vote) VALUES (?, ?, ?)').bind(query, flawTitle, vote).run(); }
+    catch (dbErr) { console.error('[反馈] D1 写入失败:', dbErr); return c.json({ error: '反馈数据写入失败' }, 500); }
+
+    return c.json({ success: true, message: vote === 1 ? '感谢认可！' : vote === -1 ? '反馈已记录' : '反馈已记录' });
+  } catch (err) { console.error('[反馈] 异常:', err); return c.json({ error: '服务内部错误' }, 500); }
+});
+
+// ============================================
+// GET /api/trending
 // ============================================
 app.get('/api/trending', async (c) => {
   try {
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-    const { results } = await c.env.DB.prepare(
-      `SELECT query_text, COUNT(*) as search_count
-       FROM search_logs
-       WHERE created_at > ?
-       GROUP BY query_text
-       ORDER BY search_count DESC
-       LIMIT 6`,
-    )
-      .bind(sevenDaysAgo)
-      .all<{ query_text: string; search_count: number }>();
-
-    if (!results || results.length === 0) {
-      return c.json({ keywords: [] });
-    }
-
-    return c.json({
-      keywords: results.map((r) => r.query_text),
-    });
-  } catch (err) {
-    console.error('[热搜] 查询失败:', err);
-    return c.json({ keywords: [], error: '查询热搜失败' }, 500);
-  }
+    const { results } = await c.env.DB.prepare(`SELECT query_text, COUNT(*) as search_count FROM search_logs WHERE created_at > ? GROUP BY query_text ORDER BY search_count DESC LIMIT 6`).bind(sevenDaysAgo).all<{ query_text: string; search_count: number }>();
+    return c.json({ keywords: results?.map((r) => r.query_text) ?? [] });
+  } catch (err) { console.error('[热搜] 失败:', err); return c.json({ keywords: [], error: '查询失败' }, 500); }
 });
 
 // ============================================
-// GET /api/health — 健康检查
+// GET /api/health
 // ============================================
-app.get('/api/health', async (c) => {
-  return c.json({
-    status: 'ok',
-    timestamp: Date.now(),
-    uptime: Math.floor(performance.now() / 1000),
-    services: {
-      workers_ai: 'ok',
-      vectorize: 'ok',
-      d1: 'ok',
-    },
-  });
-});
+app.get('/api/health', async (c) => c.json({ status: 'ok', timestamp: Date.now(), uptime: Math.floor(performance.now() / 1000), services: { workers_ai: 'ok', vectorize: 'ok', d1: 'ok' }}));
 
 // ============================================
-// POST /api/pit-submission — 用户提交避坑线索
+// POST /api/pit-submission
 // ============================================
 app.post('/api/pit-submission', async (c) => {
   try {
     let body: Record<string, unknown>;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: '请求体必须是合法 JSON' }, 400);
-    }
-
+    try { body = await c.req.json(); } catch { return c.json({ error: '请求体必须是合法 JSON' }, 400); }
     const parsed = PitSubmissionSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json(
-        { error: '参数校验失败', details: parsed.error.flatten().fieldErrors },
-        400
-      );
-    }
+    if (!parsed.success) return c.json({ error: '参数校验失败', details: parsed.error.flatten().fieldErrors }, 400);
 
     const { userId, productName, pitTitle, description } = parsed.data;
-
-    try {
-      await c.env.DB.prepare(
-        `INSERT INTO user_pit_submissions (user_id, product_name, pit_title, description, status, created_at)
-         VALUES (?, ?, ?, ?, 'pending', ?)`
-      )
-        .bind(userId, productName, pitTitle, description, Date.now())
-        .run();
-    } catch (dbErr) {
-      console.error('[避坑提交] D1 写入失败:', dbErr);
-      return c.json({ error: '提交失败，请稍后重试' }, 500);
-    }
-
-    return c.json({
-      success: true,
-      message: '提交成功，实验室正在核实中',
-    });
-  } catch (err) {
-    console.error('[避坑提交] 未预期的异常:', err);
-    return c.json({ error: '服务内部错误', status: 500 });
-  }
+    try { await c.env.DB.prepare(`INSERT INTO user_pit_submissions (user_id, product_name, pit_title, description, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)`).bind(userId, productName, pitTitle, description, Date.now()).run(); }
+    catch (dbErr) { console.error('[避坑提交] 失败:', dbErr); return c.json({ error: '提交失败' }, 500); }
+    return c.json({ success: true, message: '提交成功，实验室正在核实中' });
+  } catch (err) { console.error('[避坑提交] 异常:', err); return c.json({ error: '服务内部错误', status: 500 }); }
 });
 
 // ============================================
-// POST /api/expose — 用户提交排雷曝光
+// POST /api/expose
 // ============================================
 app.post('/api/expose', async (c) => {
   try {
-    /* ---- 第 1 层：JSON 解析 ---- */
     let body: Record<string, unknown>;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: '请求体必须是合法 JSON', code: 'INVALID_JSON' }, 400);
-    }
-
-    /* ---- 第 2 层：Zod 校验 ---- */
+    try { body = await c.req.json(); } catch { return c.json({ error: '必须是合法 JSON', code: 'INVALID_JSON' }, 400); }
     const parsed = ExposeSubmissionSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json(
-        { error: '参数校验失败', code: 'VALIDATION_ERROR', details: parsed.error.flatten().fieldErrors },
-        400,
-      );
-    }
+    if (!parsed.success) return c.json({ error: '参数校验失败', code: 'VALIDATION_ERROR', details: parsed.error.flatten().fieldErrors }, 400);
 
     const { userId, productName, pitTitle, description } = parsed.data;
-
-    /* ---- 第 3 层：D1 写入（带精确错误透传） ---- */
-    let dbError: Error | null = null;
-    try {
-      await c.env.DB.prepare(
-        `INSERT INTO expose_posts (user_id, product_name, pit_title, description, status, created_at)
-         VALUES (?, ?, ?, ?, 'pending', ?)`,
-      )
-        .bind(userId, productName, pitTitle, description ?? null, Date.now())
-        .run();
-    } catch (e) {
-      dbError = e instanceof Error ? e : new Error(String(e));
-      console.error('[排雷曝光 POST] D1 写入失败:', dbError.message, dbError.cause ?? '');
-
-      // 如果表不存在，返回明确的 actionable 错误
-      const msg = String(dbError.message ?? '');
-      if (msg.includes('no such table')) {
-        return c.json({
-          error: '数据库表未初始化，请管理员执行迁移',
-          code: 'DB_TABLE_MISSING',
-          detail: msg,
-          action: '运行 npx wrangler d1 execute <DB> --file=./migrations/0003_expose_posts.sql',
-        }, 500);
-      }
+    try { await c.env.DB.prepare(`INSERT INTO expose_posts (user_id, product_name, pit_title, description, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)`).bind(userId, productName, pitTitle, description ?? null, Date.now()).run(); }
+    catch (e) {
+      const msg = String((e instanceof Error ? e : new Error(String(e))).message ?? '');
+      if (msg.includes('no such table')) return c.json({ error: '数据库表未初始化', code: 'DB_TABLE_MISSING', detail: msg, action: '执行迁移 SQL' }, 500);
+      return c.json({ error: '提交失败', code: 'DB_WRITE_ERROR', detail: msg }, 500);
     }
-
-    if (dbError) {
-      return c.json({
-        error: '提交失败，请稍后重试',
-        code: 'DB_WRITE_ERROR',
-        detail: dbError.message,
-      }, 500);
-    }
-
-    return c.json({
-      success: true,
-      message: '曝光已提交，审核后将在前台展示',
-    });
-  } catch (err) {
-    /* ---- 最外层兜底 ---- */
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[排雷曝光 POST] 未预期的异常:', msg);
-    return c.json({ error: '服务内部错误', code: 'INTERNAL', detail: msg }, 500);
-  }
+    return c.json({ success: true, message: '曝光已提交' });
+  } catch (err) { const msg = err instanceof Error ? err.message : String(err); return c.json({ error: '内部错误', code: 'INTERNAL', detail: msg }, 500); }
 });
 
 // ============================================
-// GET /api/expose — 获取已审核通过的排雷曝光列表
-// 支持 ?status=verified（默认） + ?offset=0&limit=20 分页
+// GET /api/expose
 // ============================================
 app.get('/api/expose', async (c) => {
-  /* ---- 第 1 层：参数校验与安全过滤 ---- */
-  const rawOffset = c.req.query('offset') || '0';
-  const rawLimit = c.req.query('limit') || '20';
-  const offset = Math.max(0, parseInt(rawOffset, 10) || 0);
-  const limit = Math.min(50, Math.max(1, parseInt(rawLimit, 10) || 20));
-
-  // 安全限制：前台只能查看 verified 的帖子，忽略用户传入的 status
-  const allowedStatus = 'verified';
-
-  /* ---- 第 2 层：D1 查询（带精确错误透传） ---- */
-  let dbError: Error | null = null;
-  let results: Array<{
-    id: number;
-    product_name: string;
-    pit_title: string;
-    description: string | null;
-    status: string;
-    vote_count: number;
-    created_at: number;
-  }> = [];
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10) || 20));
 
   try {
-    const queryResult = await c.env.DB.prepare(
-      `SELECT id, product_name, pit_title, description, status, vote_count, created_at
-       FROM expose_posts
-       WHERE status = ?
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-    )
-      .bind(allowedStatus, limit, offset)
-      .all<{
-        id: number;
-        product_name: string;
-        pit_title: string;
-        description: string | null;
-        status: string;
-        vote_count: number;
-        created_at: number;
-      }>();
+    const qr = await c.env.DB.prepare(`SELECT id, product_name, pit_title, description, status, vote_count, created_at FROM expose_posts WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind('verified', limit, offset).all();
+    const results = qr.results ?? [];
+    if (!results.length) return c.json({ posts: [], hasMore: false });
 
-    results = queryResult.results ?? [];
+    const posts = results.map((r) => ({ id: r.id, productName: r.product_name, pitTitle: r.pit_title, description: r.description, status: r.status, voteCount: r.vote_count, createdAt: r.created_at }));
+    return c.json({ posts, hasMore: results.length >= limit });
   } catch (e) {
-    dbError = e instanceof Error ? e : new Error(String(e));
-    console.error('[排雷曝光 GET] D1 查询失败:', dbError.message, dbError.cause ?? '');
-
-    // 如果是表不存在的错误，返回 actionable 信息
-    const msg = String(dbError.message ?? '');
-    if (msg.includes('no such table')) {
-      return c.json({
-        posts: [],
-        hasMore: false,
-        error: '数据库表未初始化，请管理员执行迁移',
-        code: 'DB_TABLE_MISSING',
-        detail: msg,
-        action: '运行 npx wrangler d1 execute <DB> --file=./migrations/0003_expose_posts.sql',
-      }, 500);
-    }
-
-    // 其他 D1 错误
-    return c.json({
-      posts: [],
-      hasMore: false,
-      error: '数据库查询失败',
-      code: 'DB_QUERY_ERROR',
-      detail: dbError.message,
-    }, 500);
+    const msg = String((e instanceof Error ? e : new Error(String(e))).message ?? '');
+    if (msg.includes('no such table')) return c.json({ posts: [], hasMore: false, error: '表未初始化', code: 'DB_TABLE_MISSING' }, 500);
+    return c.json({ posts: [], hasMore: false, error: '查询失败', code: 'DB_QUERY_ERROR', detail: msg }, 500);
   }
+});
 
-  /* ---- 第 3 层：空结果快速返回（无报错） ---- */
-  if (!results || results.length === 0) {
-    // ★ 如果表存在但没有数据，这是正常的空状态，返回 200
-    // 如果表不存在，上面的 catch 已经处理并返回 500 + 详细信息
-    try {
-      return c.json({ posts: [], hasMore: false });
-    } catch (jsonErr) {
-      console.error('[排雷曝光 GET] JSON 序列化失败:', jsonErr);
-      return c.json({ posts: [], hasMore: false, error: '数据序列化失败' }, 500);
-    }
-  }
+// ============================================
+// GET /api/diagnose — 诊断端点（排查各组件连通性）
+// ============================================
+app.get('/api/diagnose', async (c) => {
+  const results: Record<string, any> = { timestamp: new Date().toISOString(), tests: {} };
 
-  /* ---- 第 4 层：结果映射 ---- */
-  let posts: Array<{
-    id: number;
-    productName: string;
-    pitTitle: string;
-    description: string | null;
-    status: string;
-    voteCount: number;
-    createdAt: number;
-  }> = [];
-
+  // 1. D1 测试
   try {
-    posts = results.map((r) => ({
-      id: r.id,
-      productName: r.product_name,
-      pitTitle: r.pit_title,
-      description: r.description,
-      status: r.status,
-      voteCount: r.vote_count,
-      createdAt: r.created_at,
-    }));
-  } catch (mapErr) {
-    const msg = mapErr instanceof Error ? mapErr.message : String(mapErr);
-    console.error('[排雷曝光 GET] 结果映射失败:', msg);
-    return c.json({
-      posts: [],
-      hasMore: false,
-      error: '数据格式异常',
-      code: 'DATA_MAPPING_ERROR',
-      detail: msg,
-    }, 500);
+    const testRow = await c.env.DB.prepare('SELECT COUNT(*) as cnt FROM search_cache').first<{ cnt: number }>();
+    results.tests.d1 = { status: 'ok', cacheCount: testRow?.cnt ?? 0 };
+  } catch (err: any) {
+    results.tests.d1 = { status: 'error', message: err.message };
   }
 
-  /* ---- 第 5 层：正常返回 ---- */
+  // 2. DeepSeek 连通性测试（只测连接，不发完整请求）
   try {
-    return c.json({
-      posts,
-      hasMore: results.length >= limit,
-    });
-  } catch (jsonErr) {
-    const msg = jsonErr instanceof Error ? jsonErr.message : String(jsonErr);
-    console.error('[排雷曝光 GET] 响应序列化失败:', msg);
-    return c.json({
-      posts: [],
-      hasMore: false,
-      error: '响应序列化失败',
-      code: 'JSON_SERIALIZE_ERROR',
-      detail: msg,
-    }, 500);
+    const apiKey = c.env.DEEPSEEK_API_KEY as string | undefined;
+    const baseURL = c.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+    const hasKey = !!apiKey;
+    const keyPreview = apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : '(未设置)';
+
+    if (!hasKey) {
+      results.tests.deepseek = { status: 'skipped', reason: 'DEEPSEEK_API_KEY 未设置', keyPreview };
+    } else {
+      const t0 = Date.now();
+      const dsRes = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [{ role: 'user', content: '回复 OK 两个字' }],
+          temperature: 0,
+          max_tokens: 5,
+          stream: false,   // ★ 诊断用非流式，简单快速
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const elapsed = Date.now() - t0;
+      const body = await dsRes.text().catch(() => '');
+      results.tests.deepseek = {
+        status: dsRes.ok ? 'ok' : `http_${dsRes.status}`,
+        elapsed: `${elapsed}ms`,
+        keyPreview,
+        bodyPreview: body.slice(0, 200),
+      };
+    }
+  } catch (err: any) {
+    results.tests.deepseek = { status: 'error', message: err.name === 'AbortError' ? '超时(10s)' : err.message };
   }
+
+  // 3. Workers AI 测试
+  try {
+    const t0 = Date.now();
+    const aiRes = await Promise.race([
+      c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+        messages: [{ role: 'user', content: '回复 OK' }],
+        max_tokens: 5,
+      }) as Promise<{ response?: string }>,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('超时(10s)')), 10_000)),
+    ]);
+    const elapsed = Date.now() - t0;
+    results.tests.workers_ai = {
+      status: 'ok',
+      elapsed: `${elapsed}ms`,
+      hasResponse: !!(aiRes.response),
+      preview: (aiRes.response ?? '').slice(0, 100),
+    };
+  } catch (err: any) {
+    results.tests.workers_ai = { status: 'error', message: err.message };
+  }
+
+  // 4. Vectorize 测试
+  try {
+    const emb = await c.env.AI.run('@cf/baai/bge-m3', { text: ['测试'] }) as { data: number[][] };
+    const vr = await c.env.KNOWLEDGE_VECTOR.query(emb.data[0], { topK: 1 });
+    results.tests.vectorize = { status: 'ok', vectorDim: emb.data[0]?.length, topScore: vr.matches?.[0]?.score ?? 0 };
+  } catch (err: any) {
+    results.tests.vectorize = { status: 'error', message: err.message };
+  }
+
+  return c.json(results);
 });
 
 // ============================================
-// GET /api/blacklist — 智商税黑榜 Mock 数据
+// GET /api/blacklist
 // ============================================
-app.get('/api/blacklist', (c) => {
-  const blacklist = [
-    {
-      id: 1,
-      productName: '志高空气炸锅 99元版',
-      score: 12,
-      fatalFlaw: '发热管功率严重虚标，实测比标称低 40%，烤鸡翅 30 分钟还是生的',
-      tags: ['溢价严重', '贴牌代工', '安全隐患'],
-      date: '2026-05',
-    },
-    {
-      id: 2,
-      productName: 'SKG 眼部按摩仪 E3',
-      score: 18,
-      fatalFlaw: '所谓「AI 穴位按摩」本质就是两个偏心马达在震，跟 30 块钱的眼保健操仪没区别',
-      tags: ['智商税', '概念炒作', '贴牌代工'],
-      date: '2026-05',
-    },
-    {
-      id: 3,
-      productName: '奥克斯折叠洗衣机',
-      score: 22,
-      fatalFlaw: '折叠结构导致密封圈极易发霉，洗一次衣服机器自己先臭了，不如手洗',
-      tags: ['品控不稳', '体验极差'],
-      date: '2026-04',
-    },
-    {
-      id: 4,
-      productName: '荣事达无叶风扇',
-      score: 15,
-      fatalFlaw: '风力实测不到普通台扇的 1/3，噪音反而翻倍，所谓负离子就是机身上贴了个负离子字样的贴纸',
-      tags: ['参数虚标', '概念炒作', '溢价严重'],
-      date: '2026-05',
-    },
-  ];
-
-  return c.json({ items: blacklist, updatedAt: '2026-05-28' });
-});
+app.get('/api/blacklist', (c) => c.json({ items: [
+  { id: 1, productName: '志高空气炸锅 99元版', score: 12, fatalFlaw: '发热管功率严重虚标，实测比标称低 40%', tags: ['溢价严重','贴牌代工'], date: '2026-05' },
+  { id: 2, productName: 'SKG 眼部按摩仪 E3', score: 18, fatalFlaw: '所谓AI穴位按摩就是两个偏心马达在震', tags: ['智商税','概念炒作'], date: '2026-05' },
+  { id: 3, productName: '奥克斯折叠洗衣机', score: 22, fatalFlaw: '密封圈极易发霉，洗一次衣服机器先臭了', tags: ['品控不稳'], date: '2026-04' },
+  { id: 4, productName: '荣事达无叶风扇', score: 15, fatalFlaw: '风力不到普通台扇的1/3，噪音翻倍', tags: ['参数虚标'], date: '2026-05' },
+], updatedAt: '2026-05-28' }));
 
 // ============================================
-// 404 兜底
+// 404
 // ============================================
-app.all('*', (c) => {
-  return c.json({ error: 'Not Found' }, 404);
-});
+app.all('*', (c) => c.json({ error: 'Not Found' }, 404));
 
 // ============================================
-// Cron Triggers: 每天凌晨 3 点自动扫描高频未覆盖商品
+// Cron Triggers
 // ============================================
-//   流程：
-//     1. 从 search_logs 中聚合近 7 天搜索次数 Top 10
-//     2. 对每个查询词向量化 → 查询 Vectorize 知识库
-//     3. 匹配分数 < 0.5（或无结果）→ 写入 pending_crawls 待爬取队列
-//     4. 日志输出扫描结果 + 新增标记数量
-// ============================================
-const VECTORIZE_COVERAGE_THRESHOLD = 0.5; // 低于此分数视为"知识库未覆盖"
+const VECTORIZE_COVERAGE_THRESHOLD = 0.5;
 
-async function scheduled(
-  _event: ScheduledEvent,
-  env: Env,
-  _ctx: ExecutionContext,
-): Promise<void> {
+async function scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
   const startTime = Date.now();
-  console.log(
-    `[Cron] ⏰ 定时任务触发 | 时间: ${new Date().toISOString()}`,
-  );
-
+  console.log(`[Cron] 定时任务触发 | ${new Date().toISOString()}`);
   try {
-    // ---- 步骤 1：从 search_logs 聚合近 7 天 Top 10 高频查询 ----
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const { results: topQueries } = await env.DB.prepare(`SELECT query_text, COUNT(*) as search_count FROM search_logs WHERE created_at > ? GROUP BY query_text ORDER BY search_count DESC LIMIT 10`).bind(sevenDaysAgo).all<{ query_text: string; search_count: number }>();
+    if (!topQueries?.length) { console.log('[Cron] 无搜索记录'); return; }
 
-    const { results: topQueries } = await env.DB.prepare(
-      `SELECT query_text, COUNT(*) as search_count
-       FROM search_logs
-       WHERE created_at > ?
-       GROUP BY query_text
-       ORDER BY search_count DESC
-       LIMIT 10`,
-    )
-      .bind(sevenDaysAgo)
-      .all<{ query_text: string; search_count: number }>();
-
-    if (!topQueries || topQueries.length === 0) {
-      console.log('[Cron] 📭 近 7 天无搜索记录，跳过扫描');
-      return;
-    }
-
-    console.log(
-      `[Cron] 📊 近 7 天高频查询 Top ${topQueries.length}:`,
-      topQueries.map((r) => `"${r.query_text}"(${r.search_count}次)`).join(', '),
-    );
-
-    // ---- 步骤 2 & 3：逐条检查 Vectorize 覆盖率 ----
-    let newlyMarked = 0;
-    let alreadyExists = 0;
-    let checkFailed = 0;
+    let newlyMarked = 0, alreadyExists = 0, checkFailed = 0;
 
     for (const row of topQueries) {
-      const { query_text: queryText, search_count: count } = row;
-
-      // 2a. 向量化查询词
+      const { query_text: q, search_count: count } = row;
       let isCovered = false;
       try {
-        const embeddingResponse = (await env.AI.run(
-          '@cf/baai/bge-large-zh-v1.5',
-          { text: [queryText] },
-        )) as { data: number[][] };
+        const emb = (await env.AI.run('@cf/baai/bge-m3', { text: [q] })) as { data: number[][] };
+        const vr = await env.KNOWLEDGE_VECTOR.query(emb.data[0], { topK: 1, returnMetadata: false, returnValues: false });
+        if (vr.matches?.length && (vr.matches[0].score ?? 0) >= VECTORIZE_COVERAGE_THRESHOLD) isCovered = true;
+      } catch (err) { checkFailed++; }
 
-        const vector = embeddingResponse.data[0];
-
-        // 2b. 在 Vectorize 中检索，检查是否有高相关度的已有知识
-        const vectorResults = await env.KNOWLEDGE_VECTOR.query(vector, {
-          topK: 1,
-          returnMetadata: false,
-          returnValues: false,
-        });
-
-        if (
-          vectorResults.matches &&
-          vectorResults.matches.length > 0 &&
-          (vectorResults.matches[0].score ?? 0) >= VECTORIZE_COVERAGE_THRESHOLD
-        ) {
-          isCovered = true;
-        }
-      } catch (err) {
-        const reason =
-          err instanceof Error ? err.message : String(err);
-        console.error(
-          `[Cron] ⚠️ Vectorize 检查异常 "${queryText}": ${reason}`,
-        );
-        checkFailed++;
-        // 检查失败视为未覆盖，继续标记
-      }
-
-      // 2c. 已覆盖 → 跳过
-      if (isCovered) {
-        console.log(
-          `[Cron] ✅ 已覆盖: "${queryText}" (搜索 ${count} 次)`,
-        );
-        continue;
-      }
-
-      // 2d. 未覆盖 → 写入 pending_crawls
-      try {
-        const now = Date.now();
-
-        // 先检查是否已存在
-        const { results: existing } = await env.DB.prepare(
-          'SELECT id, search_count, first_seen_at FROM pending_crawls WHERE query_text = ?',
-        )
-          .bind(queryText)
-          .all<{ id: number; search_count: number; first_seen_at: number }>();
-
-        if (existing && existing.length > 0) {
-          // 已存在 → 更新搜索次数和最近发现时间
-          await env.DB.prepare(
-            `UPDATE pending_crawls
-             SET search_count = ?, last_seen_at = ?, updated_at = ?
-             WHERE query_text = ?`,
-          )
-            .bind(count, now, now, queryText)
-            .run();
-          alreadyExists++;
-          console.log(
-            `[Cron] 🔄 已更新: "${queryText}" (搜索 ${count} 次)`,
-          );
-        } else {
-          // 新发现 → 插入
-          await env.DB.prepare(
-            `INSERT INTO pending_crawls
-             (query_text, search_count, reason, status, first_seen_at, last_seen_at, created_at)
-             VALUES (?, ?, '知识库无匹配', 'pending', ?, ?, ?)`,
-          )
-            .bind(queryText, count, now, now, now)
-            .run();
-          newlyMarked++;
-          console.log(
-            `[Cron] 📝 新标记: "${queryText}" (搜索 ${count} 次)`,
-          );
-        }
-      } catch (err) {
-        console.error(
-          `[Cron] ❌ 写入 pending_crawls 失败 "${queryText}":`,
-          err,
-        );
-      }
+      if (isCovered) continue;
+      const now = Date.now();
+      const existing = (await env.DB.prepare('SELECT id FROM pending_crawls WHERE query_text = ?').bind(q).all()).results;
+      if (existing?.length) { await env.DB.prepare('UPDATE pending_crawls SET search_count=?, last_seen_at=?, updated_at=? WHERE query_text=?').bind(count, now, now, q).run(); alreadyExists++; }
+      else { await env.DB.prepare('INSERT INTO pending_crawls (query_text,search_count,reason,status,first_seen_at,last_seen_at,created_at) VALUES (?,"知识库无匹配","pending",?,?,?)').bind(q, count, now, now, now).run(); newlyMarked++; }
     }
 
-    // ---- 步骤 4：输出本次扫描摘要 ----
-    const elapsed = Date.now() - startTime;
-    console.log(
-      `[Cron] ✅ 定时任务完成 | ` +
-        `扫描 ${topQueries.length} 条 | ` +
-        `新标记 ${newlyMarked} 条 | ` +
-        `已存在 ${alreadyExists} 条 | ` +
-        `检查异常 ${checkFailed} 条 | ` +
-        `耗时 ${elapsed}ms`,
-    );
-  } catch (err) {
-    console.error('[Cron] 💥 定时任务异常终止:', err);
-    throw err; // 抛出异常让 Cloudflare 感知到失败，便于重试
-  }
+    console.log(`[Cron] 完成 | 扫描${topQueries.length}条 | 新${newlyMarked} 已有${alreadyExists} 异常${checkFailed} | ${Date.now()-startTime}ms`);
+  } catch (err) { console.error('[Cron] 异常:', err); throw err; }
 }
 
-// ============================================
-// Worker 导出：HTTP fetch + Cron scheduled
-// ============================================
-export default {
-  fetch: app.fetch,
-  scheduled,
-};
+export default { fetch: app.fetch, scheduled };

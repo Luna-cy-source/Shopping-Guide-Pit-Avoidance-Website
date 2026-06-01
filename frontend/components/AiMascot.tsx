@@ -175,7 +175,7 @@ export default function AiMascot() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(apiUrl('/api/search'), {
+      const res = await fetch(apiUrl('/api/search/stream'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text }),

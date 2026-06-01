@@ -2,10 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { experimental_useObject } from 'ai/react';
 import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
-import { apiUrl } from '../lib/api';
-import { LLMResponseSchema } from '../lib/schema';
+import { submitSearch, pollResult, isResponseComplete, apiUrl } from '../lib/api';
 import PriceReferenceCard from './PriceReferenceCard';
 import SourceStatsPanel from './SourceStatsPanel';
 import SpecsCheckTable from './SpecsCheckTable';
@@ -533,25 +531,204 @@ function generateLocalReport(query: string) {
 // 主组件：ReportStreamer
 // ============================================
 export function ReportStreamer({ query }: ReportStreamerProps) {
-  const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search'),
-    schema: LLMResponseSchema,
-    onError: (err) => {
-      const msg = err?.message || String(err);
-      console.error('[ReportStreamer] AI 请求失败:', msg, err);
-      const isServerOrNetworkError =
-        msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
-        msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
-        msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed') ||
-        msg.includes('Not Found') || msg.includes('404');
-      if (isServerOrNetworkError && !localReport) {
-        setLocalReport(generateLocalReport(query));
-      }
-    },
-  });
+  // ===== 自定义 fetch 状态（替代 experimental_useObject）=====
+  const [aiObject, setAiObject] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // 本地离线兜底报告
+  /**
+   * 核心请求函数 — 异步 Job + 轮询模式
+   *
+   * 流程：
+   *   1. POST /api/search → 立即返回 { jobId, status }
+   *   2. 如果 status='done'（缓存命中）→ 直接展示
+   *   3. 如果 status='processing' → 轮询 GET /api/search/result
+   *      - 阶段A（快速轮询）：前 15 次，每 1.5s 一次（覆盖大多数 5-20s 内完成的任务）
+   *      - 阶段B（慢速轮询）：后 25 次，每 3s 一次（覆盖 DeepSeek 超时+兜底的 20-50s 长任务）
+   *      - 总上限 ~90s，之后进入长轮询模式（每 5s 一次，最多再查 20 次 = 再等 100s）
+   *   4. 全部超时 → 显示部分结果 / 错误提示
+   *
+   * 优势：彻底避免长连接超时截断问题，Worker 后台异步处理无时间限制
+   */
+  const submit = useCallback(async (input: { query: string }) => {
+    if (abortRef.current) abortRef.current.abort();
+
+    setIsLoading(true);
+    setError(null);
+    setAiObject(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const t0 = Date.now();
+
+    // ★ 阶段A：快速轮询（覆盖大部分缓存/快速响应场景）
+    const FAST_POLLS = 15;
+    const FAST_INTERVAL = 1500; // 1.5s
+    // ★ 阶段B：慢速轮询（覆盖 DeepSeek 超时 + 兜底的长任务）
+    const SLOW_POLLS = 25;
+    const SLOW_INTERVAL = 3000; // 3s
+    // ★ 阶段C：长轮询（极端情况，给后台更多时间）
+    const LONG_POLL_INTERVAL = 5000; // 5s
+    const LONG_POLLS = 20;
+    let jobId = ''; // 在外层声明，catch 中可引用
+
+    try {
+      // 步骤 1：提交搜索（POST 立即返回）
+      console.log(`[ReportStreamer] 🚀 提交搜索 | query="${input.query}"`);
+      const job = await submitSearch(input.query);
+      jobId = job.jobId;
+      console.log(`[ReportStreamer] 📋 Job 创建 | jobId=${jobId.slice(0, 8)}... | status=${job.status} | 耗时=${Date.now() - t0}ms`);
+
+      if (controller.signal.aborted) return;
+
+      // 步骤 2：缓存命中 → 直接返回
+      if (job.status === 'done' && job.data) {
+        console.log(`[ReportStreamer] ⚡ 缓存命中！总耗时=${Date.now() - t0}ms`);
+        if (!isResponseComplete(job.data)) {
+          throw new Error('INCOMPLETE: 缓存数据关键字段缺失');
+        }
+        setAiObject(job.data);
+        return;
+      }
+
+      if (job.status === 'error') {
+        throw new Error(job.error || 'Job 创建失败');
+      }
+
+      // 步骤 3：阶段A — 快速轮询（首次立即查询，不等待）
+      console.log(`[ReportStreamer] ⏳ [阶段A] 快速轮询开始（间隔=${FAST_INTERVAL / 1000}s，最多${FAST_POLLS}次）...`);
+
+      for (let i = 0; i < FAST_POLLS; i++) {
+        if (controller.signal.aborted) return;
+        // 首次不等待，后续每次间隔 FAST_INTERVAL
+        if (i > 0) await new Promise(r => setTimeout(r, FAST_INTERVAL));
+
+        const result = await pollResult(jobId);
+        console.log(`[ReportStreamer] 🔍 [阶段A] #${i + 1} | status=${result.status} | 总耗时=${Date.now() - t0}ms`);
+
+        if (result.status === 'done' && result.data) {
+          console.log(`[ReportStreamer] ✅ 数据就绪！productName=${result.data.productName} | flaws=${result.data.flaws?.length || 0}条 | 总耗时=${Date.now() - t0}ms`);
+          if (!isResponseComplete(result.data)) {
+            throw new Error('INCOMPLETE: AI 返回数据关键字段缺失');
+          }
+          setAiObject(result.data);
+          return;
+        }
+
+        if (result.status === 'error') {
+          throw new Error(result.error || 'AI 分析失败');
+        }
+      }
+
+      // 步骤 4：阶段B — 慢速轮询（DeepSeek 可能超时触发 Workers AI 兜底）
+      console.log(`[ReportStreamer] ⏳ [阶段B] 慢速轮询（间隔=${SLOW_INTERVAL / 1000}s，最多${SLOW_POLLS}次）...`);
+
+      for (let i = 0; i < SLOW_POLLS; i++) {
+        if (controller.signal.aborted) return;
+        await new Promise(r => setTimeout(r, SLOW_INTERVAL));
+
+        const result = await pollResult(jobId);
+        console.log(`[ReportStreamer] 🔍 [阶段B] #${i + 1} | status=${result.status} | 总耗时=${Date.now() - t0}ms`);
+
+        if (result.status === 'done' && result.data) {
+          console.log(`[ReportStreamer] ✅ 数据就绪！productName=${result.data.productName} | 总耗时=${Date.now() - t0}ms`);
+          if (!isResponseComplete(result.data)) {
+            throw new Error('INCOMPLETE: AI 返回数据关键字段缺失');
+          }
+          setAiObject(result.data);
+          return;
+        }
+
+        if (result.status === 'error') {
+          throw new Error(result.error || 'AI 分析失败');
+        }
+      }
+
+      // 步骤 5：阶段C — 长轮询（极端情况，继续等待但不阻塞 UI）
+      console.log(`[ReportStreamer] ⏳ [阶段C] 长轮询模式（间隔=${LONG_POLL_INTERVAL / 1000}s，最多${LONG_POLLS}次）...`);
+
+      for (let i = 0; i < LONG_POLLS; i++) {
+        if (controller.signal.aborted) return;
+        await new Promise(r => setTimeout(r, LONG_POLL_INTERVAL));
+
+        const result = await pollResult(jobId);
+        console.log(`[ReportStreamer] 🔍 [阶段C] #${i + 1} | status=${result.status} | 总耗时=${Date.now() - t0}ms`);
+
+        if (result.status === 'done' && result.data) {
+          console.log(`[ReportStreamer] ✅ 数据就绪！总耗时=${Date.now() - t0}ms`);
+          if (!isResponseComplete(result.data)) {
+            throw new Error('INCOMPLETE: AI 返回数据关键字段缺失');
+          }
+          setAiObject(result.data);
+          return;
+        }
+
+        if (result.status === 'error') {
+          throw new Error(result.error || 'AI 分析失败');
+        }
+      }
+
+      // 全部轮询耗尽
+      throw new Error(`TIMEOUT: 轮询 ${((FAST_POLLS * FAST_INTERVAL) + (SLOW_POLLS * SLOW_INTERVAL) + (LONG_POLLS * LONG_POLL_INTERVAL)) / 1000}s 后仍未完成`);
+
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        console.log('[ReportStreamer] 用户取消请求');
+        return;
+      }
+
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[ReportStreamer] ❌ 失败 | 耗时=${Date.now() - t0}ms | ${errMsg}`);
+
+      // ★ 增强重试：超时/网络错误时进入"静默重试"模式（每 5s 一次，再试 10 次）
+      if (errMsg.includes('processing') || errMsg.includes('TIMEOUT') || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed')) {
+        console.log('[ReportStreamer] 🔄 进入静默重试模式（每 5s × 10 次）...');
+        for (let retry = 0; retry < 10; retry++) {
+          if (controller.signal.aborted) return;
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const result = await pollResult(jobId || '');
+            if (result.status === 'done' && result.data) {
+              console.log(`[ReportStreamer] ✅ 重试成功！第 ${retry + 1} 次重试命中 | 总耗时=${Date.now() - t0}ms`);
+              setAiObject(result.data);
+              return;
+            }
+            console.log(`[ReportStreamer] 🔄 重试 #${retry + 1} | status=${result.status}`);
+          } catch {}
+        }
+        console.warn('[ReportStreamer] ⚠️ 静默重试全部耗尽');
+      }
+
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setIsLoading(false);
+      abortRef.current = null;
+    }
+  }, [query]);
+
+  const stop = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
+  }, []);
+
+  // 本地离线兜底报告（在 submit 之后声明，但运行时已初始化）
   const [localReport, setLocalReport] = useState<any>(null);
+
+  // 错误时自动降级到本地兜底
+  useEffect(() => {
+    if (!error) return;
+    const msg = error?.message || '';
+    const isServerOrNetworkError =
+      msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
+      msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
+      msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed') ||
+      msg.includes('Not Found') || msg.includes('404');
+    if (isServerOrNetworkError && !localReport) {
+      console.log('[ReportStreamer] 触发本地兜底报告');
+      setLocalReport(generateLocalReport(query));
+    }
+  }, [error, query, localReport]);
+
   // 合并：优先本地兜底，其次 AI 返回
   const object = localReport || aiObject;
 
@@ -581,7 +758,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
     setLocalReport(null);
   }, [query]);
 
-  // ===== 长耗时兜底检测：超过 25 秒未收到 intent 则提示 =====
+  // ===== 长耗时兜底检测：超过 30 秒未收到 intent 则提示 =====
   const [isSlow, setIsSlow] = useState(false);
   useEffect(() => {
     setIsSlow(false);
@@ -590,7 +767,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       if (!object?.intent) {
         setIsSlow(true);
       }
-    }, 45_000);
+    }, 30_000);
     return () => clearTimeout(timer);
   }, [isLoading, object?.intent, query]);
 
@@ -648,7 +825,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       <div className="space-y-4">
         <SkeletonLoader />
         <StreamErrorBanner
-          message="AI 分析超时，请尝试重新分析或简化查询词。"
+          message="AI 分析耗时较长，商品可能较复杂。可点击重试或稍后再试。"
           onRetry={() => {
             hasPartialContentRef.current = false;
             submit({ query });
@@ -691,10 +868,22 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
     const skus = (object as any).skus as any[] | undefined;
     const hasSkus = skus && skus.length > 0;
     const selectedSku = hasSkus ? skus[selectedSkuIndex] : null;
-    // 可视化数据：槽点雷达图
-    const flawRadar = (object as any).visData?.flawRadar as
-      | Record<string, number>
-      | undefined;
+
+    // ★ FlawRadar 数据格式兼容转换（普通变量，不用 Hook 避免 early return 问题）
+    const rawFlawRadar = (object as any).visData?.flawRadar as any;
+    let flawRadar: Record<string, number> | undefined;
+    if (rawFlawRadar) {
+      if (typeof rawFlawRadar.labels === 'undefined' && Array.isArray(rawFlawRadar.scores) === false) {
+        flawRadar = rawFlawRadar as Record<string, number>;
+      } else {
+        const labels: string[] = rawFlawRadar.labels || [];
+        const scores: number[] = rawFlawRadar.scores || [];
+        flawRadar = {};
+        labels.forEach((label: string, i: number) => {
+          flawRadar![label] = typeof scores[i] === 'number' ? scores[i] : 5;
+        });
+      }
+    }
 
     return (
       <div className="space-y-6">
@@ -1026,12 +1215,34 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
             </svg>
             价格走势（近12个月）
           </h3>
-          <PriceChart />
+          <PriceChart basePrice={(() => {
+            // 多级价格提取：priceReference > SKU价格解析 > 评分估算
+            const refPrice = Array.isArray(object.priceReference) && object.priceReference.length > 0
+              ? object.priceReference.find((p: { price?: number }) => typeof p?.price === 'number')?.price
+              : undefined;
+            if (typeof refPrice === 'number' && refPrice > 0) return refPrice;
+
+            // 尝试从 SKU 价格字符串中解析数字（如 "¥1540" 或 "约¥1,200"）
+            const skus = (object as any).skus as Array<{ priceStr?: string }> | undefined;
+            if (skus && skus.length > 0) {
+              for (const sku of skus) {
+                const m = (sku.priceStr || '').match(/(\d[\d,]*)/);
+                if (m) {
+                  const parsed = parseInt(m[1].replace(/,/g, ''), 10);
+                  if (parsed > 0) return parsed;
+                }
+              }
+            }
+
+            // 基于评分的粗略估算（仅作为最后兜底）
+            const score = typeof object.score === 'number' ? object.score : 5;
+            return Math.max(100, score * 200);
+          })()} />
         </section>
 
         {/* 参数透视 — 在坑点列表上方，体现「扒皮」犀利感 */}
         {object.specsCheck && object.specsCheck.length > 0 && (
-          <SpecsCheckTable items={object.specsCheck} />
+          <SpecsCheckTable items={object.specsCheck} isLoading={isLoading} />
         )}
 
         {/* 坑点列表 */}

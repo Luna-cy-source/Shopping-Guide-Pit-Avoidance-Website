@@ -305,7 +305,7 @@ export default function ComparePage() {
   const [localResult, setLocalResult] = useState<CompareResult | null>(null);
   const [isLocalMode, setIsLocalMode] = useState(false);
   const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search'),
+    api: apiUrl('/api/search/stream'),
     schema: LLMResponseSchema,
     onError: (err) => {
       const msg = err?.message || String(err);
