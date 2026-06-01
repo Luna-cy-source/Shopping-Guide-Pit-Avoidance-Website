@@ -432,6 +432,100 @@ function handleSearchResult(url) {
 }
 
 // ============================================
+// POST /api/follow-up — AI 动态生成追问（第1次轻量调用）
+// ============================================
+async function handleFollowUp(request) {
+  try {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: '请求体必须是合法 JSON' }, 400); }
+
+    const query = (body.query ?? '').trim();
+    if (!query) return json({ error: '查询内容不能为空' }, 400);
+    if (query.length > 2000) return json({ error: '查询内容过长' }, 400);
+
+    const budget = body.budget ?? 500;
+
+    console.log(`[FollowUp] 🧠 生成追问 query="${query.slice(0, 50)}" budget=${budget}`);
+
+    const followUpPrompt = `你是电商选品专家。用户正在描述购物需求，你需要生成 1~2 个精准追问来更好地理解用户的深层需求。
+
+用户原始需求：${query}
+用户预算约：¥${budget}
+
+【生成追问规则】：
+1. 优先补齐用户没提到、但对推荐结果影响大的关键维度（如使用场景、特殊偏好、禁忌品牌、对品质/便携/颜值等维度的权重等）
+2. 如果用户描述已经非常充分，可以只生成 1 个问题甚至 0 个
+3. 问题要高度贴合该品类，禁止用「游戏还是办公」这种泛化模板——比如用户问微单，就别问游戏
+4. 每个问题提供 3~5 个预设选项，选项要带 🟢 简洁 emoji 描述，方便用户点选
+5. 问题用简洁口语化中文，一句话说清
+
+【输出格式】严格纯 JSON（无 Markdown 包裹）：
+{
+  "questions": [
+    {
+      "question": "追问文本",
+      "options": ["选项A 🟢", "选项B 🟢", ...]
+    }
+  ]
+}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const apiResponse = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          messages: [
+            { role: 'system', content: '你是电商选品专家，只输出 JSON，不要 Markdown 包裹。' },
+            { role: 'user', content: followUpPrompt },
+          ],
+          temperature: 0.4,
+          max_tokens: 512,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!apiResponse.ok) {
+        console.error(`[FollowUp] ❌ HTTP ${apiResponse.status}`);
+        return json({ questions: [] }); // 降级：不追问
+      }
+
+      const jsonResp = await apiResponse.json();
+      const text = jsonResp?.choices?.[0]?.message?.content || '';
+
+      // 提取 JSON
+      let cleaned = text.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?\s*```\s*$/i, '').trim();
+      const fb = cleaned.indexOf('{');
+      const lb = cleaned.lastIndexOf('}');
+      if (fb !== -1 && lb !== -1 && lb > fb) cleaned = cleaned.slice(fb, lb + 1);
+
+      const parsed = JSON.parse(cleaned);
+      const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+      console.log(`[FollowUp] ✅ 生成了 ${questions.length} 个追问`);
+      return json({ questions });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.error('[FollowUp] 💥 异常:', err?.message);
+      return json({ questions: [] }); // 降级：不追问
+    }
+  } catch (err) {
+    console.error('[FollowUp] 💥 请求解析失败:', err?.message);
+    return json({ error: '请求无效' }, 400);
+  }
+}
+
+// ============================================
 // 兜底数据
 // ============================================
 const STATIC_TRENDING = { keywords: ['吹风机', '空气炸锅', '电动牙刷', '扫地机器人', '洗地机', '投影仪'] };
@@ -472,6 +566,7 @@ export const onRequest = async (context) => {
   if (path === '/api/search' && method === 'POST') return handleSearch(request);
   if (path === '/api/search/stream' && method === 'POST') return handleSearchStream(request);
   if (path === '/api/search/result' && method === 'GET') return handleSearchResult(url);
+  if (path === '/api/follow-up' && method === 'POST') return handleFollowUp(request);
 
   // ======== 只读路由 ========
   if (path === '/api/health') return json({ status: 'ok', engine: 'DeepSeek', timestamp: Date.now() });

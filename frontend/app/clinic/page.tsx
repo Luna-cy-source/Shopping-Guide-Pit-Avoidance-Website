@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { experimental_useObject } from 'ai/react';
 import { apiUrl } from '../../lib/api';
 import { LLMResponseSchema } from '../../lib/schema';
@@ -103,8 +103,10 @@ export default function ClinicPage() {
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState(500);          // 步骤6：预算滑块
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const [followUpStep, setFollowUpStep] = useState(0); // 步骤7：AI追问（0=未开始，1-3=追问中，4=完成）
+  const [followUpStep, setFollowUpStep] = useState(0); // AI追问（0=未开始，1-N=追问中，99=完成）
   const [followUpAnswers, setFollowUpAnswers] = useState<string[]>([]);
+  const [followUpLoading, setFollowUpLoading] = useState(false); // 正在请求AI生成追问
+  const [dynamicQuestions, setDynamicQuestions] = useState<{ question: string; options: string[] }[]>([]); // AI动态生成的追问
   // 离线兜底状态
   const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalClinicResult> | null>(null);
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
@@ -143,16 +145,39 @@ export default function ClinicPage() {
     }
   }, [object?.intent]);
 
-  const handleSubmit = () => {
-    const trimmed = description.trim();
-    if (!trimmed || trimmed.length < 5) return;
-
-    // 步骤7：AI追问机制 — 如果还没追问，先弹出追问
-    if (followUpStep === 0) {
-      setFollowUpStep(1);
-      setSubmittedQuery(trimmed);
-      return;
+  // ★ 请求 AI 动态生成追问
+  const requestFollowUp = async (query: string) => {
+    setFollowUpLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/follow-up'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, budget }),
+      });
+      const data = await res.json();
+      if (data.questions && data.questions.length > 0) {
+        setDynamicQuestions(data.questions);
+        setFollowUpStep(1);
+      } else {
+        // AI 认为不需要追问，直接分析
+        doFinalSubmit(query, []);
+      }
+    } catch {
+      // 网络异常，直接分析
+      doFinalSubmit(query, []);
+    } finally {
+      setFollowUpLoading(false);
     }
+  };
+
+  // ★ 执行最终提交分析
+  const doFinalSubmit = (query: string, answers: string[]) => {
+    const qaText = answers.length > 0 && dynamicQuestions.length > 0
+      ? `\n追问回答：${dynamicQuestions.map((dq, i) => {
+          const idx = parseInt(answers[i] || '0');
+          return `Q${i + 1}: ${dq.question} → A: ${dq.options[idx] ?? '未回答'}`;
+        }).join('\n')}`
+      : '';
 
     const prompt = `【选品诊所模式】以下是一位用户的自然语言需求描述，请你：
 
@@ -160,152 +185,32 @@ export default function ClinicPage() {
 2. 根据需求反向推荐 3-5 款最匹配的商品
 3. 每款商品必须诚实列出"核心妥协点 / 坑点"，不得回避
 
-用户需求："${submittedQuery}"
-${followUpAnswers.length > 0 ? `\n追问回答：${followUpAnswers.map((a, i) => `Q${i + 1}: ${FOLLOW_UP_QUESTIONS[i]} → A: ${FOLLOW_UP_PRESET_ANSWERS[i]?.[parseInt(a)] ?? a}`).join('\n')}` : ''}
+用户需求："${query}"${qaText}
 
 请使用 intent='recommend' 模式输出结果。`;
 
     submit({ query: prompt });
     setFollowUpStep(0);
     setFollowUpAnswers([]);
+    setDynamicQuestions([]);
     setLocalResult(null);
   };
 
-  // 步骤7：AI追问 — 根据用户输入智能匹配问题池
-  function buildFollowUpQuestions(query: string): { questions: string[]; answers: string[][] } {
-    const q = query.toLowerCase();
+  const handleSubmit = () => {
+    const trimmed = description.trim();
+    if (!trimmed || trimmed.length < 5) return;
 
-    // ===== 送礼场景 =====
-    if (/妈妈|爸爸|礼物|生日|女朋友|男朋友|老公|老婆|长辈|老人|父母|父亲|母亲|孩子|儿童|女儿|儿子|闺蜜|男友|女友|对象|爱人|情人节|母亲节|父亲节|结婚|纪念日|新年|春节/.test(q)) {
-      return {
-        questions: [
-          '收礼人大概是什么年龄段？',
-          'ta平时有什么兴趣爱好或偏好风格？',
-          '希望礼物偏向实用型还是仪式感强一点？',
-        ],
-        answers: [
-          ['20-30岁年轻人 🧑', '30-50岁中年人 👨', '50岁以上长辈 🧓', '学龄前儿童 🧒'],
-          ['喜欢科技数码 📱', '注重生活品质 🏡', '热爱运动户外 🏃', '文艺小清新 🎨', '吃货一枚 🍜', '实用主义者 💼'],
-          ['越实用越好 🔧', '有仪式感/颜值高 🎁', '两者兼顾 ✨'],
-        ],
-      };
+    // 如果还没进入追问流程 → 先请求 AI 生成追问
+    if (followUpStep === 0) {
+      setSubmittedQuery(trimmed);
+      requestFollowUp(trimmed);
+      return;
     }
 
-    // ===== 厨房/小家电场景 =====
-    if (/空气炸锅|吹风机|电饭煲|厨房|料理|烤箱|微波炉|破壁机|豆浆机|咖啡机|榨汁|厨师机|热水壶|养生壶|保温杯|电水壶|洗碗机|消毒柜|蒸箱|炖盅|面包机|早餐机|多士炉/.test(q)) {
-      return {
-        questions: [
-          '厨房空间大吗？对噪音敏感吗？',
-          '主要几个人使用？',
-          '更看重操作简便还是功能丰富？',
-        ],
-        answers: [
-          ['空间充足，不限尺寸 🏠', '台面空间有限 ⚠️', '对噪音很敏感 🔇'],
-          ['1人独享 👤', '2-3人小家庭 👫', '4人以上大家庭 👨‍👩‍👧‍👦'],
-          ['一键傻瓜式操作 😌', '功能越多越好 🎛️', '两者兼顾 ⚖️'],
-        ],
-      };
-    }
+    // 已有追问在显示中 → 等待用户回答
+  };
 
-    // ===== 个人护理/美妆场景 =====
-    if (/护肤|化妆品|面膜|精华|面霜|防晒|洗面奶|口红|香水|美容仪|剃须|牙刷|护发|洗发|沐浴|身体乳|脱毛|抗老|美白|保湿|祛痘/.test(q)) {
-      return {
-        questions: [
-          '肤质大概是什么类型？',
-          '有没有特别想改善的皮肤问题？',
-          '预算更倾向于买一件好产品还是一套组合？',
-        ],
-        answers: [
-          ['油性皮肤 💧', '干性皮肤 🏜️', '混合肌肤 🔀', '敏感肌 ⚠️'],
-          ['控油祛痘 🎯', '抗老紧致 ✨', '美白提亮 🌟', '补水保湿 💦', '淡化痘印 🔄'],
-          ['买一件好的 👑', '买一套搭配的 🎁'],
-        ],
-      };
-    }
-
-    // ===== 清洁/家居场景 =====
-    if (/吸尘器|扫地|拖地|洗衣机|空调|净化器|加湿器|除湿机|新风|地暖|烘干|清洁|除尘|擦窗|马桶|智能马桶|床垫|沙发|窗帘|收纳/.test(q)) {
-      return {
-        questions: [
-          '家里房屋面积大概多大？',
-          '家里有宠物或小孩吗？',
-          '更看重清洁效果还是静音/便捷？',
-        ],
-        answers: [
-          ['小户型（<60㎡）🏠', '中户型（60-120㎡）🏡', '大户型（120㎡以上）🏰'],
-          ['有宠物 🐱🐶', '有小孩 👶', '都没有，就成年人 👫'],
-          ['效果第一，不怕吵 💪', '必须安静，不能吵到家人 🔇', '越方便省心越好 😌'],
-        ],
-      };
-    }
-
-    // ===== 数码/电脑/办公场景 =====
-    if (/耳机|手机|电脑|平板|相机|微单|笔记本|键盘|鼠标|显示器|音响|音箱|硬盘|U盘|内存|显卡|主板|CPU|游戏|办公|投影|电视|Switch|PS5|xbox|掌机|手柄/.test(q)) {
-      return {
-        questions: [
-          '主要用于游戏娱乐还是工作学习？',
-          '便携性和性能，你更倾向哪个？',
-          '有没有品牌偏好或者想避开哪些品牌？',
-        ],
-        answers: [
-          ['游戏为主 🎮', '办公/学习为主 💼', '影音娱乐 🎬', '创作/设计 🎨'],
-          ['性能优先 💪', '便携优先 🪶', '两者兼顾 ⚖️'],
-          ['没有特别要求 😐', '倾向苹果生态 🍎', '避开小米 ❌', '避开华为 ❌', '避开三星 ❌'],
-        ],
-      };
-    }
-
-    // ===== 运动/健康/户外场景 =====
-    if (/跑步|瑜伽|健身|运动|哑铃|瑜伽垫|跳绳|椭圆机|跑步机|动感单车|登山|徒步|露营|骑行|滑雪|游泳|球拍|羽毛球|乒乓球|篮球|足球|蛋白粉|补剂|体脂秤|手环|手表|智能穿戴/.test(q)) {
-      return {
-        questions: [
-          '你的运动基础和频率大概是？',
-          '主要在家里练还是去健身房/户外？',
-          '预算里包含配件装备吗还是只算主器材？',
-        ],
-        answers: [
-          ['完全新手 🐣', '偶尔运动（每周1-2次）🏃', '规律运动（每周3次+）💪'],
-          ['居家锻炼 🏠', '健身房 🏋️', '户外运动 🌲', '混合模式 🔀'],
-          ['只买主器材（如跑步机本身）🏃', '主器材+配件一起配齐 🎒'],
-        ],
-      };
-    }
-
-    // ===== 服装/穿搭场景 =====
-    if (/衣服|裤子|鞋子|外套|羽绒服|大衣|卫衣|T恤|裙子|包包|鞋|运动鞋|皮鞋|高跟鞋|帆布鞋|内衣|睡衣|泳衣|帽子|围巾|眼镜|首饰|项链|戒指|手链/.test(q)) {
-      return {
-        questions: [
-          '穿着者的身高体型可以描述一下吗？',
-          '偏好的风格大概是什么方向？',
-          '这个单品主要是日常穿还是特殊场合？',
-        ],
-        answers: [
-          ['娇小型（160cm以下）🌸', '标准身材（160-175cm）⚖️', '高大身材（175cm以上）🏔️'],
-          ['简约百搭 🤍', '潮流时尚 🔥', '商务正式 💼', '休闲舒适 😌', '复古文艺 📻'],
-          ['日常通勤/上学 🚌', '约会/聚会 🥂', '运动/户外 🏃', '正式场合 🎩'],
-        ],
-      };
-    }
-
-    // ===== 通用兜底 =====
-    return {
-      questions: [
-        '最看重的使用场景是什么？',
-        '对品质和预算的权衡，你倾向哪边？',
-        '有没有一定要避开的品牌？',
-      ],
-      answers: [
-        ['日常家用 🏠', '外出携带 🚶', '送人/礼物 🎁', '专业用途 💼'],
-        ['性价比优先 💰', '品质优先 ✨', '均衡考虑 ⚖️'],
-        ['没有特别 😊', '避开小米', '避开华为', '避开苹果'],
-      ],
-    };
-  }
-
-  // 当前生效的追问配置（根据已提交的查询动态生成）
-  const currentFollowUp = useMemo(() => buildFollowUpQuestions(submittedQuery), [submittedQuery]);
-  const FOLLOW_UP_QUESTIONS = currentFollowUp.questions;
-  const FOLLOW_UP_PRESET_ANSWERS = currentFollowUp.answers;
+  // 当前追问数量和步骤（从 dynamicQuestions 派生）
 
   const renderRecommendations = () => {
     if (object?.intent !== 'recommend') return null;
@@ -543,47 +448,73 @@ ${followUpAnswers.length > 0 ? `\n追问回答：${followUpAnswers.map((a, i) =>
         </div>
       </div>
 
-      {/* 步骤7：AI追问面板 */}
-      {followUpStep > 0 && followUpStep <= FOLLOW_UP_QUESTIONS.length && !hasResult && (
+      {/* AI 动态追问面板 */}
+      {followUpStep > 0 && followUpStep <= dynamicQuestions.length && !hasResult && !followUpLoading && (
         <div className="mt-6 w-full max-w-2xl animate-fade-in-up">
           <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-500 text-white text-xs font-bold">{followUpStep}</span>
-              <span className="text-xs font-semibold text-purple-700">AI 追问（{followUpStep}/{FOLLOW_UP_QUESTIONS.length}）</span>
+              <span className="text-xs font-semibold text-purple-700">AI 追问（{followUpStep}/{dynamicQuestions.length}）</span>
+              <span className="ml-auto text-[10px] text-purple-400">基于你的需求智能生成</span>
             </div>
-            <p className="text-sm font-bold text-slate-800 mb-3">{FOLLOW_UP_QUESTIONS[followUpStep - 1]}</p>
+            <p className="text-sm font-bold text-slate-800 mb-3">{dynamicQuestions[followUpStep - 1]?.question}</p>
             <div className="flex flex-wrap gap-2">
-              {FOLLOW_UP_PRESET_ANSWERS[followUpStep - 1].map((ans, i) => (
+              {(dynamicQuestions[followUpStep - 1]?.options || []).map((ans, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => {
                     const newAnswers = [...followUpAnswers, String(i)];
-                    if (followUpStep >= FOLLOW_UP_QUESTIONS.length) {
-                      // 最后一个问题回答完毕，触发分析
+                    if (followUpStep >= dynamicQuestions.length) {
                       setFollowUpAnswers(newAnswers);
-                      setFollowUpStep(4);
+                      setFollowUpStep(99);
                       setTimeout(() => {
-                        const trimmed = submittedQuery;
-                        const prompt = `【选品诊所模式】用户需求："${submittedQuery}"，预算: ¥${budget}。追问: ${FOLLOW_UP_QUESTIONS.map((q, j) => {
-                          const idx = j < newAnswers.length ? parseInt(newAnswers[j]) : 0;
-                          return `${q} → ${FOLLOW_UP_PRESET_ANSWERS[j]?.[idx] ?? '未回答'}`;
-                        }).join('; ')}。请用 intent='recommend' 输出。`;
-                        submit({ query: prompt });
-                        setFollowUpStep(0);
-                        setFollowUpAnswers([]);
+                        doFinalSubmit(submittedQuery, newAnswers);
                       }, 300);
                     } else {
                       setFollowUpAnswers(newAnswers);
                       setFollowUpStep(followUpStep + 1);
                     }
                   }}
-                  className="rounded-full border border-purple-200 bg-white px-3.5 py-2 text-xs font-medium text-purple-600 transition-all hover:bg-purple-100 hover:border-purple-300"
+                  className="rounded-full border border-purple-200 bg-white px-4 py-2 text-xs font-medium text-purple-600 transition-all hover:bg-purple-100 hover:border-purple-300 hover:shadow-sm"
                 >
                   {ans}
                 </button>
               ))}
             </div>
+            {/* 跳过 & 回退 */}
+            <div className="mt-4 flex items-center gap-2 border-t border-purple-100 pt-3">
+              {followUpStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFollowUpStep(followUpStep - 1);
+                    setFollowUpAnswers(followUpAnswers.slice(0, -1));
+                  }}
+                  className="text-xs text-purple-400 hover:text-purple-600 transition-colors"
+                >
+                  ← 返回上一题
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => doFinalSubmit(submittedQuery, followUpAnswers)}
+                className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
+              >
+                跳过追问，直接分析 →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 追问加载中 */}
+      {followUpLoading && !hasResult && (
+        <div className="mt-6 w-full max-w-2xl animate-fade-in-up">
+          <div className="rounded-2xl border border-purple-100 bg-purple-50/30 p-6 text-center">
+            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-purple-200 border-t-purple-500" />
+            <p className="text-sm font-medium text-purple-600">AI 正在理解你的需求...</p>
+            <p className="mt-1 text-xs text-purple-400">分析语义并生成精准追问</p>
           </div>
         </div>
       )}
