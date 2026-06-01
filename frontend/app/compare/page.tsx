@@ -1,10 +1,34 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { experimental_useObject } from 'ai/react';
-import { apiUrl } from '../../lib/api';
-import { LLMResponseSchema } from '../../lib/schema';
 import Link from 'next/link';
+
+/* ============================================
+   类型定义
+   ============================================ */
+interface CompareProduct {
+  productName: string;
+  imageUrl?: string;
+  score: number;
+  priceRange: string;
+  bestFor: string;
+  strengths: string[];
+  weaknesses: string[];
+}
+
+interface CompareResult {
+  intent: 'compare';
+  productA: CompareProduct;
+  productB: CompareProduct;
+  comparisonTable: Array<{
+    dimension: string;
+    resultA: string;
+    resultB: string;
+    winner?: 'A' | 'B' | 'tie';
+  }>;
+  verdict: string;
+  winner: 'A' | 'B' | 'tie';
+}
 
 /* ============================================
    评分色阶
@@ -79,15 +103,7 @@ function ProductCard({
   side,
   isWinner,
 }: {
-  product: {
-    productName: string;
-    imageUrl?: string;
-    score: number;
-    priceRange: string;
-    bestFor: string;
-    strengths: string[];
-    weaknesses: string[];
-  };
+  product: CompareProduct;
   side: 'A' | 'B';
   isWinner: boolean;
 }) {
@@ -224,17 +240,8 @@ function ComparisonTable({
 }
 
 /* ============================================
-   本地离线对比引擎：AI 不可用时自动降级
+   本地离线对比引擎
    ============================================ */
-interface CompareResult {
-  intent: 'compare';
-  productA: { productName: string; imageUrl?: string; score: number; priceRange: string; bestFor: string; strengths: string[]; weaknesses: string[] };
-  productB: { productName: string; imageUrl?: string; score: number; priceRange: string; bestFor: string; strengths: string[]; weaknesses: string[] };
-  comparisonTable: { dimension: string; resultA: string; resultB: string; winner?: 'A' | 'B' | 'tie' }[];
-  verdict: string;
-  winner: 'A' | 'B' | 'tie';
-}
-
 function localCompareEngine(a: string, b: string): CompareResult {
   const hash = (s: string) => s.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const seed = (hash(a) + hash(b)) % 100;
@@ -302,44 +309,71 @@ export default function ComparePage() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [showExportPrompt, setShowExportPrompt] = useState(false);
   const [activeDimensions, setActiveDimensions] = useState<Set<string>>(new Set(['续航', '噪音', '价格', '品牌', '售后', '重量']));
-  const [localResult, setLocalResult] = useState<CompareResult | null>(null);
-  const [isLocalMode, setIsLocalMode] = useState(false);
-  const { object, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search/stream'),
-    schema: LLMResponseSchema,
-    onError: (err) => {
-      const msg = err?.message || String(err);
-      const isServerOrNetworkError =
-        msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
-        msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
-        msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed');
-      if (isServerOrNetworkError) {
-        const a = productA.trim();
-        const b = productB.trim();
-        if (a && b) {
-          setIsLocalMode(true);
-          setLocalResult(localCompareEngine(a, b));
-        }
-      }
-    },
-  });
+
+  // 分析状态
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<CompareResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isFallback, setIsFallback] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const hasAnyResult = object?.intent === 'compare' || isLocalMode;
-    if (hasAnyResult && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // ==================== 核心分析函数 ====================
+  const callAnalysisAPI = async (prompt: string): Promise<CompareResult> => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: prompt }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`服务器返回 ${res.status}`);
+      }
+
+      const json = await res.json();
+
+      if (json.error) {
+        throw new Error(json.error);
+      }
+
+      if (json.status !== 'done' || !json.data) {
+        throw new Error('AI 返回数据不完整');
+      }
+
+      const data = json.data;
+      if (!data || data.intent !== 'compare') {
+        throw new Error('AI 对比结果格式异常');
+      }
+
+      return data as CompareResult;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        throw new Error('请求超时，AI 服务响应过慢');
+      }
+      throw err;
     }
-  }, [object?.intent, isLocalMode]);
+  };
 
-  const handleCompare = () => {
+  // ==================== 对比分析 ====================
+  const handleCompare = async () => {
     const a = productA.trim();
     const b = productB.trim();
     if (!a || !b) return;
 
-    setIsLocalMode(false);
-    setLocalResult(null);
+    setIsLoading(true);
+    setError(null);
+    setIsFallback(false);
 
     const prompt = `【1v1 深度对比模式】请对下面两款商品进行全方位对比分析：
 
@@ -354,17 +388,43 @@ export default function ComparePage() {
 5. 给出综合结论和最终推荐（winner: A/B/tie）
 6. 即便你的训练数据中某一款商品信息有限，也要基于你能获取的信息尽力分析，不要拒绝对比`;
 
-    submit({ query: prompt });
+    try {
+      const data = await callAnalysisAPI(prompt);
+      setResult(data);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error('[Compare] AI 分析失败:', msg);
+
+      // 降级到本地对比引擎
+      const localData = localCompareEngine(a, b);
+      setResult(localData);
+      setIsFallback(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const hasResult = object?.intent === 'compare' || isLocalMode;
-  const compareData = isLocalMode
-    ? localResult
-    : (object?.intent === 'compare' ? (object as CompareResult) : null);
+  // ==================== 停止分析 ====================
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
+  };
+
+  // ==================== 滚动到结果 ====================
+  useEffect(() => {
+    if (result && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [result]);
+
+  const hasResult = !!result;
 
   return (
     <main className="flex flex-1 flex-col items-center px-4 pt-16">
-      {/* ===== 页面标题区 + 背景装饰 ===== */}
+      {/* ===== 页面标题区 ===== */}
       <section className="relative mb-8 w-full max-w-5xl text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-3xl shadow-sm ring-1 ring-amber-100">
           🥊
@@ -444,7 +504,7 @@ export default function ComparePage() {
           {isLoading && (
             <button
               type="button"
-              onClick={stop}
+              onClick={handleStop}
               className="rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-300 hover:text-red-500"
             >
               停止分析
@@ -455,7 +515,6 @@ export default function ComparePage() {
             例如：iPhone 15 Pro vs 华为 Mate 60 Pro、索尼 WH-1000XM5 vs Bose QC45
           </p>
 
-          {/* 步骤2：多款对比入口（免费2款，付费3-5款） */}
           <button
             type="button"
             onClick={() => setShowPaywall(true)}
@@ -466,6 +525,30 @@ export default function ComparePage() {
           </button>
         </div>
       </div>
+
+      {/* ===== 离线兜底警告 ===== */}
+      {isFallback && hasResult && (
+        <div className="mt-6 w-full max-w-3xl rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+          <p className="text-xs font-medium text-amber-700">
+            ⚠️ AI 服务暂时不可用，当前展示的是本地模拟对比分析，仅供参考。
+          </p>
+        </div>
+      )}
+
+      {/* ===== 错误提示 ===== */}
+      {error && !hasResult && (
+        <div className="mt-8 w-full max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <p className="text-sm font-bold text-red-600">对比分析失败</p>
+          <p className="mt-1 text-xs font-medium text-red-500">{error}</p>
+          <button
+            type="button"
+            onClick={handleCompare}
+            className="mt-3 rounded-xl bg-red-500 px-5 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+          >
+            重新分析
+          </button>
+        </div>
+      )}
 
       {/* ===== 热门对比场景快捷入口 ===== */}
       {!hasResult && !isLoading && !error && (
@@ -500,27 +583,10 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ===== 错误提示（本地模式已降级时不显示） ===== */}
-      {error && !isLocalMode && (
-        <div className="mt-8 w-full max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-          <p className="text-sm font-bold text-red-600">对比分析失败</p>
-          <p className="mt-1 text-xs font-medium text-red-500">
-            {error.message || '未知错误，请稍后重试'}
-          </p>
-          <button
-            type="button"
-            onClick={handleCompare}
-            className="mt-3 rounded-xl bg-red-500 px-5 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
-          >
-            重新分析
-          </button>
-        </div>
-      )}
-
       {/* ===== 结果区 ===== */}
       <div ref={resultsRef} className="mt-10 w-full max-w-5xl">
         {isLoading && !hasResult && <SkeletonLoader />}
-        {!isLoading && !hasResult && !error && !object && <EmptyState />}
+        {!isLoading && !hasResult && !error && <EmptyState />}
 
         {isLoading && hasResult && (
           <div className="mb-6 h-1 w-full overflow-hidden rounded-full bg-amber-100">
@@ -529,9 +595,8 @@ export default function ComparePage() {
         )}
 
         {/* ===== 对比结果 ===== */}
-        {hasResult && compareData && (
+        {hasResult && result && (
           <div className="space-y-6">
-            {/* 步骤3：导出按钮 (右上角) */}
             <div className="flex justify-end">
               <button
                 type="button"
@@ -545,80 +610,26 @@ export default function ComparePage() {
               </button>
             </div>
 
-            {/* ---- 双列产品卡片 ---- */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-fade-in-up">
               <ProductCard
-                product={{
-                  productName: compareData.productA.productName,
-                  imageUrl: compareData.productA.imageUrl,
-                  score: compareData.productA.score,
-                  priceRange: compareData.productA.priceRange,
-                  bestFor: compareData.productA.bestFor,
-                  strengths: compareData.productA.strengths,
-                  weaknesses: compareData.productA.weaknesses,
-                }}
+                product={result.productA}
                 side="A"
-                isWinner={compareData.winner === 'A'}
+                isWinner={result.winner === 'A'}
               />
               <ProductCard
-                product={{
-                  productName: compareData.productB.productName,
-                  imageUrl: compareData.productB.imageUrl,
-                  score: compareData.productB.score,
-                  priceRange: compareData.productB.priceRange,
-                  bestFor: compareData.productB.bestFor,
-                  strengths: compareData.productB.strengths,
-                  weaknesses: compareData.productB.weaknesses,
-                }}
+                product={result.productB}
                 side="B"
-                isWinner={compareData.winner === 'B'}
+                isWinner={result.winner === 'B'}
               />
             </div>
 
-            {/* ---- 逐项对比表 ---- */}
-            {compareData.comparisonTable && compareData.comparisonTable.length > 0 && (
-              <>
-                {/* 步骤4：自定义对比维度复选框 */}
-                <div className="mt-6">
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    📋 自定义对比维度
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['续航', '噪音', '价格', '品牌', '售后', '重量', '屏幕', '拍照'].map((dim) => {
-                      const isActive = activeDimensions.has(dim);
-                      return (
-                        <button
-                          key={dim}
-                          type="button"
-                          onClick={() => setActiveDimensions((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(dim)) next.delete(dim); else next.add(dim);
-                            return next;
-                          })}
-                          className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-                            isActive
-                              ? 'bg-amber-50 text-amber-700 border border-amber-300'
-                              : 'bg-white text-slate-400 border border-slate-200'
-                          }`}
-                        >
-                          {isActive ? '✓ ' : ''}{dim}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <ComparisonTable
-                  table={compareData.comparisonTable.filter(
-                    (row) => activeDimensions.has(row.dimension)
-                  )}
-                />
-              </>
+            {result.comparisonTable && result.comparisonTable.length > 0 && (
+              <ComparisonTable table={result.comparisonTable} />
             )}
 
-            {/* ---- 判决区 ---- */}
             <div
               className={`card-premium text-center animate-fade-in-up ${
-                compareData.winner === 'tie'
+                result.winner === 'tie'
                   ? 'bg-slate-50'
                   : 'border-amber-200 bg-gradient-to-b from-amber-50/60 to-white'
               }`}
@@ -627,19 +638,19 @@ export default function ComparePage() {
                 ⚖️ AI 判决
               </p>
               <p className="text-base font-bold text-slate-900 leading-relaxed">
-                {compareData.winner === 'A' && '🏆 '}
-                {compareData.winner === 'B' && '🏆 '}
-                {compareData.verdict}
+                {result.winner === 'A' && '🏆 '}
+                {result.winner === 'B' && '🏆 '}
+                {result.verdict}
               </p>
-              {compareData.winner !== 'tie' && (
+              {result.winner !== 'tie' && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-1.5">
                   <span className="text-lg">🏆</span>
                   <span className="text-sm font-bold text-amber-700">
-                    推荐购买：{compareData.winner === 'A' ? compareData.productA.productName : compareData.productB.productName}
+                    推荐购买：{result.winner === 'A' ? result.productA.productName : result.productB.productName}
                   </span>
                 </div>
               )}
-              {compareData.winner === 'tie' && (
+              {result.winner === 'tie' && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-200 px-4 py-1.5">
                   <span className="text-lg">🤝</span>
                   <span className="text-sm font-bold text-slate-600">
@@ -671,7 +682,7 @@ export default function ComparePage() {
         本实验室独立运营，分析结果基于 AI 综合多方评测数据，仅供参考。
       </p>
 
-      {/* 步骤2：付费解锁弹窗 */}
+      {/* 付费解锁弹窗 */}
       {showPaywall && (
         <>
           <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm" onClick={() => setShowPaywall(false)} />
@@ -693,7 +704,7 @@ export default function ComparePage() {
         </>
       )}
 
-      {/* 步骤3：导出登录提示弹窗 */}
+      {/* 导出提示弹窗 */}
       {showExportPrompt && (
         <>
           <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm" onClick={() => setShowExportPrompt(false)} />

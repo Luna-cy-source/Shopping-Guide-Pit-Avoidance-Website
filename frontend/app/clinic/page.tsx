@@ -1,10 +1,24 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { experimental_useObject } from 'ai/react';
-import { apiUrl } from '../../lib/api';
-import { LLMResponseSchema } from '../../lib/schema';
 import Link from 'next/link';
+
+/* ============================================
+   类型定义
+   ============================================ */
+interface ClinicRecommendation {
+  productName: string;
+  score: number;
+  priceRange: string;
+  reason: string;
+  compromise: string;
+}
+
+interface ClinicResult {
+  intent: 'recommend';
+  userProfile?: string;
+  recommendations: ClinicRecommendation[];
+}
 
 /* ============================================
    辅助：根据评分返回色阶
@@ -62,9 +76,6 @@ function EmptyState() {
 }
 
 /* ============================================
-   主组件
-   ============================================ */
-/* ============================================
    离线兜底：AI 不可用时生成本地推荐结果
    ============================================ */
 function generateLocalClinicResult(query: string) {
@@ -101,63 +112,78 @@ function generateLocalClinicResult(query: string) {
 
 export default function ClinicPage() {
   const [description, setDescription] = useState('');
-  const [budget, setBudget] = useState(500);          // 步骤6：预算滑块
+  const [budget, setBudget] = useState(500);
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const [followUpStep, setFollowUpStep] = useState(0); // AI追问（0=未开始，1-N=追问中，99=完成）
+
+  // 分析状态（直接 fetch + 状态管理，不再依赖 experimental_useObject）
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<ClinicResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isFallback, setIsFallback] = useState(false); // 是否使用了离线兜底
+
+  // AI 追问状态
+  const [followUpStep, setFollowUpStep] = useState(0);
   const [followUpAnswers, setFollowUpAnswers] = useState<string[]>([]);
-  const [followUpLoading, setFollowUpLoading] = useState(false); // 正在请求AI生成追问
-  const [dynamicQuestions, setDynamicQuestions] = useState<{ question: string; options: string[] }[]>([]); // AI动态生成的追问
-  const [analyzingBridge, setAnalyzingBridge] = useState(false); // 桥接：追问结束到AI分析开始之间的loading
-  // 离线兜底状态
-  const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalClinicResult> | null>(null);
-  const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search/stream'),
-    schema: LLMResponseSchema,
-    onError: (err) => {
-      const msg = err?.message || String(err);
-      console.error('[Clinic] AI 请求失败:', msg);
-      if ((msg.includes('fetch') || msg.includes('network') || msg.includes('Failed') ||
-           msg.includes('ECONNREFUSED') || msg.includes('timeout') ||
-           msg.includes('Not Found') || msg.includes('404')) && !localResult) {
-        setLocalResult(generateLocalClinicResult(submittedQuery || description));
-      }
-    },
-  });
-  // 合并：优先本地兜底，其次 AI 返回
-  const object = localResult || aiObject;
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [dynamicQuestions, setDynamicQuestions] = useState<{ question: string; options: string[] }[]>([]);
+  const [analyzingBridge, setAnalyzingBridge] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // ★ 超时兜底：AI 请求超过 18 秒无结果 → 自动展示本地模拟数据
-  useEffect(() => {
-    if (!isLoading || localResult || object?.intent === 'recommend') return;
-    const timer = setTimeout(() => {
-      console.warn('[Clinic] ⏰ AI 响应超时(18s)，启用本地兜底');
-      if (!object?.intent) {
-        setLocalResult(generateLocalClinicResult(submittedQuery || description));
+  // ==================== 核心分析函数 ====================
+  const callAnalysisAPI = async (prompt: string): Promise<ClinicResult> => {
+    // 取消之前的请求
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s 超时
+
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: prompt }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`服务器返回 ${res.status}`);
       }
-    }, 18000);
-    return () => clearTimeout(timer);
-  }, [isLoading, localResult, object?.intent]);
 
-  // ★ 桥接清理：当 useObject 的 isLoading 生效后，关闭 bridge
-  useEffect(() => {
-    if (isLoading || object?.intent === 'recommend' || localResult) {
-      setAnalyzingBridge(false);
+      const json = await res.json();
+
+      if (json.error) {
+        throw new Error(json.error);
+      }
+
+      if (json.status !== 'done' || !json.data) {
+        throw new Error('AI 返回数据不完整');
+      }
+
+      // 验证返回的数据
+      const data = json.data;
+      if (!data || data.intent !== 'recommend' || !Array.isArray(data.recommendations) || data.recommendations.length === 0) {
+        throw new Error('AI 推荐结果格式异常');
+      }
+
+      return data as ClinicResult;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        throw new Error('请求超时，AI 服务响应过慢');
+      }
+      throw err;
     }
-  }, [isLoading, object?.intent, localResult]);
+  };
 
-  useEffect(() => {
-    if (object?.intent === 'recommend' && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [object?.intent]);
-
-  // ★ 请求 AI 动态生成追问
+  // ==================== 追问 API ====================
   const requestFollowUp = async (query: string) => {
     setFollowUpLoading(true);
     try {
-      const res = await fetch(apiUrl('/api/follow-up'), {
+      const res = await fetch('/api/follow-up', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, budget }),
@@ -170,23 +196,25 @@ export default function ClinicPage() {
       const data = await res.json();
       if (data.questions && data.questions.length > 0) {
         setDynamicQuestions(data.questions);
-        setFollowUpStep(1); // 触发显示追问面板
+        setFollowUpStep(1);
       } else {
-        // AI 判断不需要追问
         doFinalSubmit(query, []);
       }
     } catch (err) {
       console.warn('[Clinic] 追问请求失败:', err instanceof Error ? err.message : err);
-      // 追问失败不卡住流程，直接分析
       doFinalSubmit(query, []);
     } finally {
       setFollowUpLoading(false);
     }
   };
 
-  // ★ 执行最终提交分析
-  const doFinalSubmit = (query: string, answers: string[]) => {
-    setAnalyzingBridge(true); // 桥接loading：确保追问→分析过渡期间始终显示加载
+  // ==================== 最终提交 ====================
+  const doFinalSubmit = async (query: string, answers: string[]) => {
+    setAnalyzingBridge(true);
+    setError(null);
+    setIsFallback(false);
+    setIsLoading(true);
+
     const qaText = answers.length > 0 && dynamicQuestions.length > 0
       ? `\n追问回答：${dynamicQuestions.map((dq, i) => {
           const idx = parseInt(answers[i] || '0');
@@ -204,34 +232,67 @@ export default function ClinicPage() {
 
 请使用 intent='recommend' 模式输出结果。`;
 
-    submit({ query: prompt });
+    try {
+      const data = await callAnalysisAPI(prompt);
+      setResult(data);
+      setAnalyzingBridge(false);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error('[Clinic] AI 分析失败:', msg);
+
+      // 尝试离线兜底
+      if (!result) {
+        const localData = generateLocalClinicResult(query);
+        setResult(localData);
+        setIsFallback(true);
+      } else {
+        setError(msg);
+      }
+      setAnalyzingBridge(false);
+    } finally {
+      setIsLoading(false);
+    }
+
     setFollowUpStep(0);
     setFollowUpAnswers([]);
     setDynamicQuestions([]);
-    setLocalResult(null);
   };
 
+  // ==================== 停止分析 ====================
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
+    setAnalyzingBridge(false);
+  };
+
+  // ==================== 提交入口 ====================
   const handleSubmit = () => {
     const trimmed = description.trim();
     if (!trimmed || trimmed.length < 5) return;
 
-    // 如果还没进入追问流程 → 先请求 AI 生成追问
     if (followUpStep === 0) {
       setSubmittedQuery(trimmed);
       requestFollowUp(trimmed);
       return;
     }
-
-    // 已有追问在显示中 → 等待用户回答
   };
 
-  // 当前追问数量和步骤（从 dynamicQuestions 派生）
+  // ==================== 滚动到结果 ====================
+  useEffect(() => {
+    if (result && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [result]);
 
+  // ==================== 渲染推荐结果 ====================
   const renderRecommendations = () => {
-    if (object?.intent !== 'recommend') return null;
+    if (!result || result.intent !== 'recommend') return null;
 
-    const recs = object.recommendations || [];
-    const profile = object.userProfile as string | undefined;
+    const recs = result.recommendations || [];
+    const profile = result.userProfile;
 
     return (
       <div ref={resultsRef} className="space-y-6 animate-fade-in-up">
@@ -374,7 +435,7 @@ export default function ClinicPage() {
     );
   };
 
-  const hasResult = object?.intent === 'recommend';
+  const hasResult = result?.intent === 'recommend';
 
   return (
     <main className="flex flex-1 flex-col items-center px-4 pt-16">
@@ -416,7 +477,7 @@ export default function ClinicPage() {
             disabled={isLoading}
           />
 
-          {/* 步骤6：预算滑块 */}
+          {/* 预算滑块 */}
           <div className="border-t border-slate-50 px-5 py-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-medium text-slate-500">💰 预算范围</span>
@@ -437,7 +498,7 @@ export default function ClinicPage() {
               {isLoading && (
                 <button
                   type="button"
-                  onClick={stop}
+                  onClick={handleStop}
                   className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-300 hover:text-red-500"
                 >
                   停止
@@ -497,7 +558,6 @@ export default function ClinicPage() {
                 </button>
               ))}
             </div>
-            {/* 跳过 & 回退 */}
             <div className="mt-4 flex items-center gap-2 border-t border-purple-100 pt-3">
               {followUpStep > 1 && (
                 <button
@@ -558,7 +618,7 @@ export default function ClinicPage() {
       )}
 
       {/* ===== 离线兜底警告横幅 ===== */}
-      {localResult && (
+      {isFallback && hasResult && (
         <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
           <p className="text-xs font-medium text-amber-700">
             ⚠️ AI 服务暂时不可用，当前展示的是基于通用消费经验的模拟推荐，仅供参考。
@@ -566,11 +626,11 @@ export default function ClinicPage() {
         </div>
       )}
 
-      {/* ===== 错误提示（仅无离线数据时显示） ===== */}
-      {error && !hasResult && !localResult && (
+      {/* ===== 错误提示 ===== */}
+      {error && !hasResult && (
         <div className="mt-8 w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
           <p className="text-sm font-semibold text-red-700">分析失败</p>
-          <p className="mt-1 text-xs text-red-500">{error.message || '未知错误，请稍后重试'}</p>
+          <p className="mt-1 text-xs text-red-500">{error}</p>
           <button
             type="button"
             onClick={handleSubmit}

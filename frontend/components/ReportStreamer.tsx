@@ -593,7 +593,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       }
 
       if (job.status === 'error') {
-        throw new Error(job.error || 'Job 创建失败');
+        // DeepSeek 错误：直接触发 fallback，不进入轮询
+        throw new Error(job.error || 'AI 分析失败');
       }
 
       // 步骤 3：阶段A — 快速轮询（首次立即查询，不等待）
@@ -616,8 +617,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           return;
         }
 
-        if (result.status === 'error') {
-          throw new Error(result.error || 'AI 分析失败');
+        if (result.status === 'error' || result.status === 'not_found') {
+          throw new Error(result.error || result.hint || 'AI 分析失败');
         }
       }
 
@@ -640,8 +641,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           return;
         }
 
-        if (result.status === 'error') {
-          throw new Error(result.error || 'AI 分析失败');
+        if (result.status === 'error' || result.status === 'not_found') {
+          throw new Error(result.error || result.hint || 'AI 分析失败');
         }
       }
 
@@ -664,8 +665,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           return;
         }
 
-        if (result.status === 'error') {
-          throw new Error(result.error || 'AI 分析失败');
+        if (result.status === 'error' || result.status === 'not_found') {
+          throw new Error(result.error || result.hint || 'AI 分析失败');
         }
       }
 
@@ -681,8 +682,9 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[ReportStreamer] ❌ 失败 | 耗时=${Date.now() - t0}ms | ${errMsg}`);
 
-      // ★ 增强重试：超时/网络错误时进入"静默重试"模式（每 5s 一次，再试 10 次）
-      if (errMsg.includes('processing') || errMsg.includes('TIMEOUT') || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed')) {
+      // ★ 增强重试：仅对网络类错误静默重试（DeepSeek 错误不重试，直接本地兜底）
+      const isNetworkRetry = errMsg.includes('processing') || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('Failed') || errMsg.includes('not_found');
+      if (isNetworkRetry) {
         console.log('[ReportStreamer] 🔄 进入静默重试模式（每 5s × 10 次）...');
         for (let retry = 0; retry < 10; retry++) {
           if (controller.signal.aborted) return;
@@ -721,8 +723,9 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
     const isServerOrNetworkError =
       msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED') ||
       msg.includes('500') || msg.includes('Internal') || msg.includes('Server') ||
-      msg.includes('timeout') || msg.includes('Abort') || msg.includes('Failed') ||
-      msg.includes('Not Found') || msg.includes('404');
+      msg.includes('timeout') || msg.includes('TIMEOUT') || msg.includes('Abort') ||
+      msg.includes('Failed') || msg.includes('Not Found') || msg.includes('404') ||
+      msg.includes('DEEPSEEK') || msg.includes('Job 创建失败') || msg.includes('数据不完整');
     if (isServerOrNetworkError && !localReport) {
       console.log('[ReportStreamer] 触发本地兜底报告');
       setLocalReport(generateLocalReport(query));

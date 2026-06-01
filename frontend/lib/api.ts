@@ -40,9 +40,10 @@ export async function submitSearch(query: string): Promise<{
  */
 export async function pollResult(jobId: string): Promise<{
   jobId: string;
-  status: 'done' | 'processing' | 'error';
+  status: 'done' | 'processing' | 'error' | 'not_found';
   data?: any;
   error?: string;
+  hint?: string;
 }> {
   const res = await fetch(`${API_BASE}/api/search/result?jobId=${encodeURIComponent(jobId)}`);
 

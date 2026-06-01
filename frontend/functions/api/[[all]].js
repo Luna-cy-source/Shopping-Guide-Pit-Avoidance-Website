@@ -8,8 +8,9 @@
 // ============================================
 const DEEPSEEK_API_KEY = 'sk-4173a7e00f5d446abb195dd2881497db';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
-const DEEPSEEK_TIMEOUT = 25000;
+const DEEPSEEK_TIMEOUT = 45000; // 增加到45秒，DeepSeek有时较慢
 const DEEPSEEK_MODEL = 'deepseek-chat';
+const MAX_RETRIES = 2; // DeepSeek 失败时重试次数
 
 // ============================================
 // 通用原则（所有 Intent 共享）
@@ -306,16 +307,16 @@ function parseAIResponse(fullText, query) {
 }
 
 // ============================================
-// 调用 DeepSeek API
+// 调用 DeepSeek API（带重试）
 // ============================================
-async function callDeepSeek(query, userPrompt) {
+async function callDeepSeek(query, userPrompt, retryCount = 0) {
   const systemPrompt = buildSystemPrompt(userPrompt);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT);
 
   try {
-    console.log(`[DeepSeek] 🚀 请求模型=${DEEPSEEK_MODEL} 超时=${DEEPSEEK_TIMEOUT/1000}s`);
+    console.log(`[DeepSeek] 🚀 请求 attempt=${retryCount + 1}/${MAX_RETRIES + 1} model=${DEEPSEEK_MODEL} 超时=${DEEPSEEK_TIMEOUT / 1000}s`);
 
     const apiResponse = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -341,6 +342,17 @@ async function callDeepSeek(query, userPrompt) {
     if (!apiResponse.ok) {
       const errBody = await apiResponse.text().catch(() => '(unreadable)');
       console.error(`[DeepSeek] ❌ HTTP ${apiResponse.status}: ${errBody.slice(0, 300)}`);
+
+      // 401/403 不重试（认证失败），其他错误可重试
+      if ((apiResponse.status === 401 || apiResponse.status === 403) && retryCount < MAX_RETRIES) {
+        // 认证错误不重试
+        throw new Error(`DEEPSEEK_AUTH_${apiResponse.status}`);
+      }
+      if (apiResponse.status >= 500 && retryCount < MAX_RETRIES) {
+        console.log(`[DeepSeek] 🔄 服务器错误，准备重试...`);
+        await new Promise(r => setTimeout(r, 2000));
+        return callDeepSeek(query, userPrompt, retryCount + 1);
+      }
       throw new Error(`DEEPSEEK_HTTP_${apiResponse.status}`);
     }
 
@@ -350,13 +362,24 @@ async function callDeepSeek(query, userPrompt) {
     console.log(`[DeepSeek] ✅ 完成 | 内容长度=${fullText.length}`);
 
     if (!fullText || fullText.length < 30) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[DeepSeek] 🔄 响应为空，准备重试...`);
+        await new Promise(r => setTimeout(r, 2000));
+        return callDeepSeek(query, userPrompt, retryCount + 1);
+      }
       throw new Error('DEEPSEEK_EMPTY_RESPONSE');
     }
 
     return parseAIResponse(fullText, query);
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err?.name === 'AbortError') throw new Error('DEEPSEEK_TIMEOUT');
+    if (err?.name === 'AbortError') {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[DeepSeek] 🔄 超时重试...`);
+        return callDeepSeek(query, userPrompt, retryCount + 1);
+      }
+      throw new Error('DEEPSEEK_TIMEOUT');
+    }
     throw err;
   }
 }
@@ -394,7 +417,7 @@ async function handleSearch(request) {
     const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(query));
     const queryHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    console.log(`[Search] 🔍 query="${query.slice(0, 50)}"`);
+    console.log(`[Search] 🔍 query="${query.slice(0, 80)}"`);
 
     const userPrompt = `用户的查询问题：${query}\n\n请按系统提示词要求深度分析。输出纯 JSON 格式，不要 Markdown 包裹。`;
 
@@ -402,8 +425,20 @@ async function handleSearch(request) {
 
     return json({ jobId: queryHash, status: 'done', data });
   } catch (err) {
-    console.error('[Search] 💥 异常:', err?.message);
-    return json({ jobId: '', status: 'error', error: err?.message || 'AI 分析失败' });
+    console.error('[Search] 💥 异常:', err?.message || err);
+    const errMsg = err?.message || 'AI 分析失败';
+    const isApiErr = errMsg.includes('DEEPSEEK');
+    const hint = isApiErr
+      ? 'AI 引擎暂时不可用，请稍后重试。已自动切换到离线分析模式。'
+      : 'AI 分析遇到异常，请重试或简化查询内容。';
+
+    return json({
+      jobId: '',
+      status: 'error',
+      error: errMsg,
+      hint,
+      isRecoverable: true,
+    });
   }
 }
 
@@ -417,26 +452,34 @@ async function handleSearchStream(request) {
     if (!query) return json({ error: '查询内容不能为空' }, 400);
     if (query.length > 2000) return json({ error: '查询内容过长' }, 400);
 
-    console.log(`[Stream] 🔍 query="${query.slice(0, 50)}"`);
+    console.log(`[Stream] 🔍 query="${query.slice(0, 80)}"`);
 
     const userPrompt = `用户的查询问题：${query}\n\n请按系统提示词要求深度分析。输出纯 JSON 格式，不要 Markdown 包裹。`;
 
     const data = await callDeepSeek(query, userPrompt);
 
-    // experimental_useObject 期望 { v: data } 格式
+    // 返回 { v: data } 格式
     return json({ v: data });
   } catch (err) {
-    console.error('[Stream] 💥 异常:', err?.message);
-    return json({ error: err?.message || 'AI 分析失败' }, 500);
+    console.error('[Stream] 💥 异常:', err?.message || err);
+    return json({
+      error: err?.message || 'AI 分析失败',
+      hint: 'AI 引擎暂时不可用，请稍后重试',
+    }, 500);
   }
 }
 
-// GET /api/search/result — 轮询端点（无缓存，返回默认状态）
+// GET /api/search/result — 轮询端点（同步模式，直接返回 done 状态）
 function handleSearchResult(url) {
   const jobId = url.searchParams.get('jobId');
   if (!jobId) return json({ error: '缺少 jobId 参数' }, 400);
-  // 无缓存数据库，返回 processing 让前端知道当前模式是同步的
-  return json({ jobId, status: 'processing' });
+  // 同步模式：如果前端调用这说明主请求还在进行中
+  // 返回一个明确的状态让前端知道应该重新调用 /api/search
+  return json({
+    jobId,
+    status: 'not_found',
+    hint: '当前为同步分析模式，请直接调用 POST /api/search 获取结果',
+  });
 }
 
 // ============================================

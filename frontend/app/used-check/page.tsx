@@ -1,15 +1,30 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { experimental_useObject } from 'ai/react';
-import { apiUrl } from '../../lib/api';
-import { LLMResponseSchema, LLMResponse } from '../../lib/schema';
 import Link from 'next/link';
 
 /* ============================================
-   类型：从 Schema 直接推导
+   类型定义
    ============================================ */
-type UsedMarketResult = Extract<LLMResponse, { intent: 'used_market' }>;
+interface ScamRoutine {
+  title: string;
+  routine: string;
+  counterMeasure: string;
+}
+
+interface InspectionItem {
+  step: string;
+  detail: string;
+}
+
+interface UsedMarketResult {
+  intent: 'used_market';
+  productName: string;
+  riskLevel: '极高' | '中等' | '低';
+  riskSummary: string;
+  scamRoutines: ScamRoutine[];
+  inspectionChecklist: InspectionItem[];
+}
 
 /* ============================================
    风险等级色系
@@ -76,7 +91,7 @@ function ProgressBar({ active }: { active: boolean }) {
 }
 
 /* ============================================
-   可交互的验机清单组件 (核心)
+   可交互的验机清单组件
    ============================================ */
 function InspectionChecklist({
   items,
@@ -106,12 +121,9 @@ function InspectionChecklist({
 
   return (
     <div className="card-premium !p-0 !overflow-hidden">
-      {/* 清单头部 */}
       <div className="flex items-center justify-between border-b border-slate-50 px-5 py-4">
         <div className="flex items-center gap-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-sm">
-            📋
-          </span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-sm">📋</span>
           <div>
             <h3 className="text-sm font-bold text-slate-900">验机清单</h3>
             <p className="text-xs text-slate-400">
@@ -128,7 +140,6 @@ function InspectionChecklist({
         </button>
       </div>
 
-      {/* 进度条 */}
       <div className="mx-5 mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div
           className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500 transition-all duration-500 ease-out"
@@ -136,7 +147,6 @@ function InspectionChecklist({
         />
       </div>
 
-      {/* 清单列表 */}
       <div className="divide-y divide-slate-50 px-5 py-3">
         {items.map((item, idx) => {
           const checked = !!checkedMap[idx];
@@ -195,7 +205,7 @@ function InspectionChecklist({
 /* ============================================
    骗局话术卡片列表
    ============================================ */
-function ScamCards({ routines }: { routines: { title: string; routine: string; counterMeasure: string }[] }) {
+function ScamCards({ routines }: { routines: ScamRoutine[] }) {
   if (!routines || routines.length === 0) return null;
 
   return (
@@ -234,12 +244,9 @@ function ScamCards({ routines }: { routines: { title: string; routine: string; c
 }
 
 /* ============================================
-   主组件
+   离线兜底
    ============================================ */
-/* ============================================
-   离线兜底：AI 不可用时生成本地鉴定结果
-   ============================================ */
-function generateLocalUsedCheckResult(query: string) {
+function generateLocalUsedCheckResult(query: string): UsedMarketResult {
   const hash = query.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const seed = (hash % 100) + 1;
   return {
@@ -253,14 +260,14 @@ function generateLocalUsedCheckResult(query: string) {
       { title: '"当面交易"陷阱', routine: '约在嘈杂公共场所见面，利用环境压力让你匆忙验机', counterMeasure: '选择安静明亮场所，预留充足验机时间（至少30分钟），可录音留存证据' },
     ],
     inspectionChecklist: [
-      { step: '核对序列号（IMEI/序列号）', detail: '进入系统设置查看序列号，与包装盒、保修卡上的号码三方一致。登录苹果/三星等官网查询保修状态和激活日期。' },
-      { step: '外观全面检查', detail: '在强光下检查机身四周有无划痕、磕碰、掉漆。特别注意接口处、边框转角等易损部位，这些地方最暴露使用痕迹。' },
-      { step: '屏幕检测', detail: '全屏切换纯白/纯黑/纯色背景，检查坏点、漏光、色斑。用手指轻按屏幕确认无触控失灵区域，测试多点触控是否正常。' },
-      { step: '电池健康度测试', detail: '查看设置中的电池健康百分比（iPhone低于85%需谨慎）。记录满电到关机的实际使用时长，对比官方标称数据。' },
-      { step: '摄像头与传感器测试', detail: '前后摄像头分别拍照录像，检查对焦速度、成像清晰度、有无噪点或模糊。测试人脸解锁/指纹识别响应速度。' },
-      { step: '接口与按键测试', detail: '逐一测试充电口、耳机孔、Type-C口插拔是否顺滑。每个物理按键反复按压确认回弹手感正常无异响。' },
-      { step: '网络与通信测试', detail: '插入SIM卡测试通话质量、4G/5G信号稳定性。连接WiFi测试网速，开启蓝牙配对设备验证无线功能。' },
-      { step: '恢复出厂设置后重启', detail: '当面执行恢复出厂设置（抹除所有数据），观察重启过程是否正常。这能清除可能存在的隐藏恶意软件。' },
+      { step: '核对序列号（IMEI/序列号）', detail: '进入系统设置查看序列号，与包装盒、保修卡上的号码三方一致。登录官网查询保修状态和激活日期。' },
+      { step: '外观全面检查', detail: '在强光下检查机身四周有无划痕、磕碰、掉漆。特别注意接口处、边框转角等易损部位。' },
+      { step: '屏幕检测', detail: '全屏切换纯白/纯黑/纯色背景，检查坏点、漏光、色斑。用手指轻按屏幕确认无触控失灵区域。' },
+      { step: '电池健康度测试', detail: '查看设置中的电池健康百分比（低于85%需谨慎）。记录满电到关机的实际使用时长。' },
+      { step: '摄像头与传感器测试', detail: '前后摄像头分别拍照录像，检查对焦速度、成像清晰度。测试人脸解锁/指纹识别。' },
+      { step: '接口与按键测试', detail: '逐一测试充电口、耳机孔插拔是否顺滑。每个物理按键反复按压确认回弹正常。' },
+      { step: '网络与通信测试', detail: '插入SIM卡测试通话质量、网络信号。连接WiFi测试网速，配对蓝牙设备。' },
+      { step: '恢复出厂设置后重启', detail: '当面执行恢复出厂设置，观察重启过程是否正常。清除可能的隐藏恶意软件。' },
     ],
   };
 }
@@ -268,58 +275,73 @@ function generateLocalUsedCheckResult(query: string) {
 export default function UsedCheckPage() {
   const [description, setDescription] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  // 离线兜底状态
-  const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalUsedCheckResult> | null>(null);
-  const [analyzingBridge, setAnalyzingBridge] = useState(false); // 桥接loading
-  const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
-    api: apiUrl('/api/search/stream'),
-    schema: LLMResponseSchema,
-    onError: (err) => {
-      const msg = err?.message || String(err);
-      console.error('[UsedCheck] AI 请求失败:', msg);
-      if ((msg.includes('fetch') || msg.includes('network') || msg.includes('Failed') ||
-           msg.includes('ECONNREFUSED') || msg.includes('timeout') ||
-           msg.includes('Not Found') || msg.includes('404')) && !localResult) {
-        setLocalResult(generateLocalUsedCheckResult(submittedQuery || description));
-      }
-    },
-  });
-  // 合并：优先本地兜底，其次 AI 返回
-  const object = localResult || aiObject;
+
+  // 分析状态
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<UsedMarketResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isFallback, setIsFallback] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
-  const hasResult = object?.intent === 'used_market';
+  const abortRef = useRef<AbortController | null>(null);
 
-  // ★ 超时兜底：AI 请求超过 18 秒无结果 → 自动展示本地模拟数据
-  useEffect(() => {
-    if (!isLoading || localResult || hasResult) return;
-    const timer = setTimeout(() => {
-      console.warn('[UsedCheck] ⏰ AI 响应超时(18s)，启用本地兜底');
-      if (!hasResult) {
-        setLocalResult(generateLocalUsedCheckResult(submittedQuery || description));
+  const hasResult = result?.intent === 'used_market';
+
+  // ==================== 核心分析函数 ====================
+  const callAnalysisAPI = async (prompt: string): Promise<UsedMarketResult> => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: prompt }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`服务器返回 ${res.status}`);
       }
-    }, 18000);
-    return () => clearTimeout(timer);
-  }, [isLoading, localResult, hasResult]);
 
-  // ★ 桥接清理：当 useObject 的 isLoading 生效后，关闭 bridge
-  useEffect(() => {
-    if (isLoading || hasResult || localResult) {
-      setAnalyzingBridge(false);
+      const json = await res.json();
+
+      if (json.error) {
+        throw new Error(json.error);
+      }
+
+      if (json.status !== 'done' || !json.data) {
+        throw new Error('AI 返回数据不完整');
+      }
+
+      const data = json.data;
+      if (!data || data.intent !== 'used_market') {
+        throw new Error('AI 鉴定结果格式异常');
+      }
+
+      return data as UsedMarketResult;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        throw new Error('请求超时，AI 服务响应过慢');
+      }
+      throw err;
     }
-  }, [isLoading, hasResult, localResult]);
+  };
 
-  useEffect(() => {
-    if (hasResult && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [hasResult]);
-
-  const handleSubmit = () => {
+  // ==================== 提交分析 ====================
+  const handleSubmit = async () => {
     const trimmed = description.trim();
     if (!trimmed || trimmed.length < 4) return;
 
-    setAnalyzingBridge(true); // 确保loading立即显示
+    setIsLoading(true);
+    setError(null);
+    setIsFallback(false);
+
     const prompt = `【二手防坑鉴定模式】以下是用户在二手交易中关注的商品，请你：
 
 1. 识别该商品在二手市场中常见的骗局话术和套路，逐一拆解并给出应对措施
@@ -330,42 +352,72 @@ export default function UsedCheckPage() {
 
 请使用 intent='used_market' 模式输出结果。`;
 
-    submit({ query: prompt });
-    setSubmittedQuery(trimmed);
-    setLocalResult(null);
+    try {
+      const data = await callAnalysisAPI(prompt);
+      setResult(data);
+      setSubmittedQuery(trimmed);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error('[UsedCheck] AI 分析失败:', msg);
+
+      if (!result) {
+        const localData = generateLocalUsedCheckResult(trimmed);
+        setResult(localData);
+        setIsFallback(true);
+        setSubmittedQuery(trimmed);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const renderResult = () => {
-    const data = object as UsedMarketResult | undefined;
-    if (!data || data.intent !== 'used_market') return null;
+  // ==================== 停止分析 ====================
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
+  };
 
-    const riskStyle = RISK_STYLES[data.riskLevel] ?? RISK_STYLES['中等'];
-    const checklist = data.inspectionChecklist ?? [];
-    const scams = data.scamRoutines ?? [];
+  // ==================== 滚动到结果 ====================
+  useEffect(() => {
+    if (hasResult && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [hasResult]);
+
+  // ==================== 渲染结果 ====================
+  const renderResult = () => {
+    if (!result || result.intent !== 'used_market') return null;
+
+    const riskStyle = RISK_STYLES[result.riskLevel] ?? RISK_STYLES['中等'];
 
     return (
       <div ref={resultsRef} className="space-y-6 animate-fade-in-up">
-        {/* ===== 风险概览卡片 ===== */}
+        {/* 风险概览卡片 */}
         <div className={`rounded-2xl border-2 ${riskStyle.ring} ${riskStyle.bg} p-6 shadow-sm`}>
           <div className="mb-3 flex items-center gap-3">
             <span className="text-xl">{riskStyle.icon}</span>
             <div>
               <p className={`text-sm font-bold ${riskStyle.text}`}>
-                {data.productName ?? '该商品'}
+                {result.productName ?? '该商品'}
               </p>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                整体风险：{data.riskLevel}
+                整体风险：{result.riskLevel}
               </p>
             </div>
           </div>
-          <p className="text-sm leading-relaxed text-slate-700">{data.riskSummary}</p>
+          <p className="text-sm leading-relaxed text-slate-700">{result.riskSummary}</p>
         </div>
 
-        {/* ===== 骗局话术 ===== */}
-        <ScamCards routines={scams} />
+        {/* 骗局话术 */}
+        <ScamCards routines={result.scamRoutines || []} />
 
-        {/* ===== 验机清单 ===== */}
-        <InspectionChecklist items={checklist} />
+        {/* 验机清单 */}
+        <InspectionChecklist items={result.inspectionChecklist || []} />
       </div>
     );
   };
@@ -417,7 +469,7 @@ export default function UsedCheckPage() {
               {isLoading && (
                 <button
                   type="button"
-                  onClick={stop}
+                  onClick={handleStop}
                   className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-300 hover:text-red-500"
                 >
                   停止
@@ -467,7 +519,7 @@ export default function UsedCheckPage() {
       )}
 
       {/* ===== 离线兜底警告横幅 ===== */}
-      {localResult && (
+      {isFallback && hasResult && (
         <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
           <p className="text-xs font-medium text-amber-700">
             ⚠️ AI 服务暂时不可用，当前展示的是基于通用二手交易经验的模拟鉴定，仅供参考。
@@ -475,11 +527,11 @@ export default function UsedCheckPage() {
         </div>
       )}
 
-      {/* ===== 错误提示（仅无离线数据时显示） ===== */}
-      {error && !hasResult && !localResult && (
+      {/* ===== 错误提示 ===== */}
+      {error && !hasResult && (
         <div className="mt-8 w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
           <p className="text-sm font-semibold text-red-700">鉴定失败</p>
-          <p className="mt-1 text-xs text-red-500">{error.message || '未知错误，请稍后重试'}</p>
+          <p className="mt-1 text-xs text-red-500">{error}</p>
           <button
             type="button"
             onClick={handleSubmit}
@@ -492,9 +544,9 @@ export default function UsedCheckPage() {
 
       {/* ===== 结果区 ===== */}
       <div className="mt-8 w-full max-w-4xl">
-        {(isLoading || analyzingBridge) && !hasResult && <SkeletonLoader />}
+        {isLoading && !hasResult && <SkeletonLoader />}
         {!isLoading && !hasResult && !error && !submittedQuery && <EmptyState />}
-        {(isLoading || analyzingBridge) && hasResult && <ProgressBar active />}
+        {isLoading && hasResult && <ProgressBar active />}
         {renderResult()}
       </div>
 
