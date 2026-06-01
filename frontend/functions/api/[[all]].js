@@ -21,6 +21,13 @@ const BASE_PRINCIPLES = `【核心原则】：
 - 绝对红线：禁止模棱两可，必须有明确判断。
 - 长度控制：每个字段精简扼要，严禁超过 50-80 字的长篇论述。
 
+【数据真实性约束】（最重要）：
+- 你的分析必须基于该产品在各大电商平台（京东/淘宝/小红书/B站）的**真实常见投诉和公认槽点**。
+- 禁止编造具体用户评论或虚构评价原文！如果引用"用户反馈"，必须是基于该品类广泛存在的共性问题（如"大量用户反映..."、"口碑普遍认为..."），而不是杜撰某条具体评论。
+- flaws 字段的 quote 可以写典型问题描述而非具体引语，例如写"普遍反映续航虚标约30%"而不是"用户'小明123'说电池不行"。
+- 如果你对某个产品的具体参数或最新情况不确定，明确标注"需进一步核实"而不是瞎编。
+- 价格参考数据基于近期市场均价区间，标注为"参考价"。
+
 【通用约束】：
 1. 只输出 JSON，不要任何 Markdown 代码块、不要解释文字。
 2. 所有中文字段使用简体中文。
@@ -61,7 +68,8 @@ const PRODUCT_SCHEMA = `【当前模式：单品分析（intent='product'）】
   ](3-4个)
 }
 
-【单品约束】：score范围0-10；flaws必须是含title/quote/analysis的对象数组；priceReference的price必须是数字。`;
+【单品约束】：score范围0-10；flaws必须是含title/quote/analysis的对象数组；priceReference的price必须是数字。
+flaws中的analysis必须基于该产品的真实公认问题（如散热差、续航短、品控不稳、溢价过高等），禁止编造不存在的问题。`;
 
 /** Intent: recommend — 选品推荐（诊所模式） */
 const RECOMMEND_SCHEMA = `【当前模式：选品推荐（intent='recommend'）】
@@ -81,7 +89,7 @@ const RECOMMEND_SCHEMA = `【当前模式：选品推荐（intent='recommend'）
   ](3-5款)
 }
 
-【选品约束】：recommendations至少3款；每款的compromise必须诚实指出不足。`;
+【选品约束】：recommendations至少3款；每款的compromise必须诚实指出不足。推荐的商品必须是真实存在的型号，不能编造商品名。reason和compromise必须基于该产品的真实优缺点。`;
 
 /** Intent: used_market — 二手防坑鉴定 */
 const USED_MARKET_SCHEMA = `【当前模式：二手防坑鉴定（intent='used_market'）】
@@ -100,7 +108,7 @@ const USED_MARKET_SCHEMA = `【当前模式：二手防坑鉴定（intent='used_
   ](5-15步)
 }
 
-【鉴定约束】：riskLevel严格限定为"极高/中等/低"三值之一。`;
+【鉴定约束】：riskLevel严格限定为"极高/中等/低"三值之一。scamRoutines必须基于该品类在二手交易中真实存在的常见骗局，禁止编造不存在的骗术。inspectionChecklist的每一步必须是可操作的实用验机步骤。`;
 
 /** Intent: compare — 1v1 对比 */
 const COMPARE_SCHEMA = `【当前模式：1v1对比（intent='compare'）】

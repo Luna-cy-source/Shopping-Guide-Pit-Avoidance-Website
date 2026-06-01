@@ -270,6 +270,7 @@ export default function UsedCheckPage() {
   const [submittedQuery, setSubmittedQuery] = useState('');
   // 离线兜底状态
   const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalUsedCheckResult> | null>(null);
+  const [analyzingBridge, setAnalyzingBridge] = useState(false); // 桥接loading
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
     api: apiUrl('/api/search/stream'),
     schema: LLMResponseSchema,
@@ -301,6 +302,13 @@ export default function UsedCheckPage() {
     return () => clearTimeout(timer);
   }, [isLoading, localResult, hasResult]);
 
+  // ★ 桥接清理：当 useObject 的 isLoading 生效后，关闭 bridge
+  useEffect(() => {
+    if (isLoading || hasResult || localResult) {
+      setAnalyzingBridge(false);
+    }
+  }, [isLoading, hasResult, localResult]);
+
   useEffect(() => {
     if (hasResult && resultsRef.current) {
       resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -311,6 +319,7 @@ export default function UsedCheckPage() {
     const trimmed = description.trim();
     if (!trimmed || trimmed.length < 4) return;
 
+    setAnalyzingBridge(true); // 确保loading立即显示
     const prompt = `【二手防坑鉴定模式】以下是用户在二手交易中关注的商品，请你：
 
 1. 识别该商品在二手市场中常见的骗局话术和套路，逐一拆解并给出应对措施
@@ -483,9 +492,9 @@ export default function UsedCheckPage() {
 
       {/* ===== 结果区 ===== */}
       <div className="mt-8 w-full max-w-4xl">
-        {isLoading && !hasResult && <SkeletonLoader />}
+        {(isLoading || analyzingBridge) && !hasResult && <SkeletonLoader />}
         {!isLoading && !hasResult && !error && !submittedQuery && <EmptyState />}
-        {isLoading && hasResult && <ProgressBar active />}
+        {(isLoading || analyzingBridge) && hasResult && <ProgressBar active />}
         {renderResult()}
       </div>
 

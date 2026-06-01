@@ -107,6 +107,7 @@ export default function ClinicPage() {
   const [followUpAnswers, setFollowUpAnswers] = useState<string[]>([]);
   const [followUpLoading, setFollowUpLoading] = useState(false); // 正在请求AI生成追问
   const [dynamicQuestions, setDynamicQuestions] = useState<{ question: string; options: string[] }[]>([]); // AI动态生成的追问
+  const [analyzingBridge, setAnalyzingBridge] = useState(false); // 桥接：追问结束到AI分析开始之间的loading
   // 离线兜底状态
   const [localResult, setLocalResult] = useState<ReturnType<typeof generateLocalClinicResult> | null>(null);
   const { object: aiObject, submit, isLoading, error, stop } = experimental_useObject({
@@ -139,6 +140,13 @@ export default function ClinicPage() {
     return () => clearTimeout(timer);
   }, [isLoading, localResult, object?.intent]);
 
+  // ★ 桥接清理：当 useObject 的 isLoading 生效后，关闭 bridge
+  useEffect(() => {
+    if (isLoading || object?.intent === 'recommend' || localResult) {
+      setAnalyzingBridge(false);
+    }
+  }, [isLoading, object?.intent, localResult]);
+
   useEffect(() => {
     if (object?.intent === 'recommend' && resultsRef.current) {
       resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -154,16 +162,22 @@ export default function ClinicPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, budget }),
       });
+      if (!res.ok) {
+        console.warn(`[Clinic] 追问接口异常 HTTP ${res.status}，跳过追问直接分析`);
+        doFinalSubmit(query, []);
+        return;
+      }
       const data = await res.json();
       if (data.questions && data.questions.length > 0) {
         setDynamicQuestions(data.questions);
-        setFollowUpStep(1);
+        setFollowUpStep(1); // 触发显示追问面板
       } else {
-        // AI 认为不需要追问，直接分析
+        // AI 判断不需要追问
         doFinalSubmit(query, []);
       }
-    } catch {
-      // 网络异常，直接分析
+    } catch (err) {
+      console.warn('[Clinic] 追问请求失败:', err instanceof Error ? err.message : err);
+      // 追问失败不卡住流程，直接分析
       doFinalSubmit(query, []);
     } finally {
       setFollowUpLoading(false);
@@ -172,6 +186,7 @@ export default function ClinicPage() {
 
   // ★ 执行最终提交分析
   const doFinalSubmit = (query: string, answers: string[]) => {
+    setAnalyzingBridge(true); // 桥接loading：确保追问→分析过渡期间始终显示加载
     const qaText = answers.length > 0 && dynamicQuestions.length > 0
       ? `\n追问回答：${dynamicQuestions.map((dq, i) => {
           const idx = parseInt(answers[i] || '0');
@@ -568,10 +583,10 @@ export default function ClinicPage() {
 
       {/* ===== 结果区 ===== */}
       <div className="mt-8 w-full max-w-4xl">
-        {isLoading && !hasResult && <SkeletonLoader />}
+        {(isLoading || analyzingBridge) && !hasResult && <SkeletonLoader />}
         {!isLoading && !hasResult && !error && !submittedQuery && <EmptyState />}
         {renderRecommendations()}
-        {isLoading && hasResult && (
+        {(isLoading || analyzingBridge) && hasResult && (
           <div className="mb-4 h-1 w-full overflow-hidden rounded-full bg-purple-100">
             <div className="h-full animate-progress-bar rounded-full bg-purple-400" />
           </div>
