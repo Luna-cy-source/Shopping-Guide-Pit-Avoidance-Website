@@ -713,7 +713,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       console.log('[ReportStreamer] 触发本地兜底报告');
       setLocalReport(generateLocalReport(query));
     }
-  }, [error, query, localReport]);
+  }, [error, query]); // 移除 localReport 依赖，避免无限重渲染
 
   // 合并：优先本地兜底，其次 AI 返回
   const object = localReport || aiObject;
@@ -794,6 +794,32 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
     [query]
   );
 
+  // 导出报告处理函数（必须放在组件顶层，不能在条件分支内）
+  const handleExportReport = useCallback(async () => {
+    if (!reportContainerRef.current) return;
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(reportContainerRef.current, {
+        backgroundColor: '#f8fafc',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        width: reportContainerRef.current.scrollWidth,
+        windowWidth: reportContainerRef.current.scrollWidth,
+      });
+      const link = document.createElement('a');
+      link.download = `避坑报告_${object?.productName || query}_${new Date().toISOString().slice(0,10)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('[导出] 失败:', err);
+      alert('导出失败，请重试');
+    } finally {
+      setExporting(false);
+      setExportOpen(false);
+    }
+  }, [object?.productName, query]);
+
   // ===== 1. 全局加载：无 intent =====
   if (isLoading && !object?.intent) {
     return (
@@ -869,32 +895,6 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
         });
       }
     }
-
-    // 导出报告处理函数
-    const handleExportReport = useCallback(async () => {
-      if (!reportContainerRef.current) return;
-      setExporting(true);
-      try {
-        const canvas = await html2canvas(reportContainerRef.current, {
-          backgroundColor: '#f8fafc',
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          width: reportContainerRef.current.scrollWidth,
-          windowWidth: reportContainerRef.current.scrollWidth,
-        });
-        const link = document.createElement('a');
-        link.download = `避坑报告_${object.productName || query}_${new Date().toISOString().slice(0,10)}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      } catch (err) {
-        console.error('[导出] 失败:', err);
-        alert('导出失败，请重试');
-      } finally {
-        setExporting(false);
-        setExportOpen(false);
-      }
-    }, [object.productName, query]);
 
     return (
       <div className="space-y-6" ref={reportContainerRef}>

@@ -644,14 +644,14 @@ export default function HomePage() {
                   <div className="space-y-2">
                     {bookmarks.map((bm) => (
                       <div key={bm.url} className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:bg-white hover:shadow-sm">
-                        {/* 选品推荐类型跳转报告页，其他走原链接 */}
+                        {/* 选品推荐类型跳转选品诊所页面 */}
                         {bm.type === 'clinic' ? (
                           <button
                             type="button"
                             onClick={() => {
                               const q = bm.productName.replace(/^选品推荐:\s*/, '');
                               setBookmarksOpen(false);
-                              router.push(`/report?q=${encodeURIComponent(q)}`);
+                              router.push(`/clinic?q=${encodeURIComponent(q)}`);
                             }}
                             className="flex min-w-0 flex-1 items-center gap-3 text-left"
                           >
