@@ -1093,6 +1093,182 @@ app.get('/api/diagnose', async (c) => {
 });
 
 // ============================================
+// GET /api/price — 慢慢买实时比价（代理）
+//   查询关键词 → 返回各平台实时价格
+// ============================================
+interface PriceResult {
+  keyword: string;
+  source: 'manmanbuy' | 'fallback';
+  items: { platform: string; price: number; url?: string }[];
+  bestPrice?: number;
+  bestPlatform?: string;
+  updatedAt?: string;
+}
+
+app.get('/api/price', async (c) => {
+  const keyword = (c.req.query('keyword') || '').trim();
+  if (!keyword) return c.json({ error: '缺少 keyword 参数' }, 400);
+  if (keyword.length > 100) return c.json({ error: '关键词过长，最多100字符' }, 400);
+
+  const t0 = Date.now();
+
+  try {
+    // ---- 方案1：慢慢买公开搜索接口 ----
+    // 使用 manmanbuy 移动端搜索 API（无需 AppKey）
+    const encodedKey = encodeURIComponent(keyword);
+    const mmUrl = `https://apapia-history.manmanbuy.com/Chrome/WareSreach.ashx?searchkey=${encodedKey}&datatype=0`;
+
+    console.log(`[价格查询] 📡 查询慢慢买 | keyword="${keyword.slice(0, 40)}"`);
+
+    const mmRes = await fetch(mmUrl, {
+      headers: {
+        'Accept': '*/*',
+        'Referer': 'https://www.manmanbuy.com/',
+        'User-Agent': 'Mozilla/5.0 (compatible; PriceBot/1.0)',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (mmRes.ok) {
+      const text = await mmRes.text();
+      // 慢慢买返回的是 callbackJSONP({...}) 格式，需要提取 JSON
+      let jsonStr = text.replace(/^callbackJSONP\(/, '').replace(/\)\s*$/, '');
+
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data?.ok === true && data?.data) {
+          const results: { platform: string; price: number; url?: string }[] = [];
+
+          // 解析慢慢买返回的商品数据
+          const goodsList: any[] = data.data || [];
+          
+          // 按 siteid 去重取最低价
+          const platformMap = new Map<string, number>();
+          for (const item of goodsList) {
+            const price = parseFloat(item.spprice || item.price || '0');
+            if (price <= 0) continue;
+            
+            // 映射 siteId 到平台名称
+            const siteName = mapSiteName(item.siteName, item.siteid);
+            const existing = platformMap.get(siteName);
+            if (!existing || price < existing) {
+              platformMap.set(siteName, price);
+            }
+          }
+
+          // 转换为数组，按价格排序
+          for (const [platform, price] of platformMap) {
+            results.push({ platform, price });
+          }
+          results.sort((a, b) => a.price - b.price);
+
+          if (results.length > 0) {
+            const result: PriceResult = {
+              keyword,
+              source: 'manmanbuy',
+              items: results,
+              bestPrice: results[0].price,
+              bestPlatform: results[0].platform,
+              updatedAt: new Date().toISOString(),
+            };
+            console.log(`[价格查询] ✅ 慢慢买成功 | ${results.length}个平台 | 耗时${Date.now()-t0}ms`);
+            return c.json(result);
+          }
+        }
+      } catch (parseErr) {
+        console.warn(`[价格查询] ⚠️ 慢慢买返回解析失败: ${(parseErr as Error).message}`);
+      }
+    } else {
+      console.warn(`[价格查询] ⚠️ 慢慢买 HTTP ${mmRes.status}`);
+    }
+
+    // ---- 方案2：慢慢买 SAPI（需配置 AppKey） ----
+    const appKey = c.env.MANMANBUY_APP_KEY;
+    if (appKey) {
+      try {
+        // GB2312 编码关键词（Cloudflare Workers 用 TextEncoder 不支持 GB2312，用 encodeURIComponent 替代）
+        const sapiUrl = `http://sapi.manmanbuy.com/Search.aspx?AppKey=${appKey}&Key=${encodedKey}&Class=0&Brand=0&Site=0&PriceMin=0&PriceMax=0&PageNum=1&PageSize=6&OrderBy=price`;
+        
+        const sapiRes = await fetch(sapiUrl, {
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (sapiRes.ok) {
+          const sapiData = await sapiRes.json() as any;
+          if (sapiData.State === 1000 && sapiData.SearchResultList) {
+            const results: { platform: string; price: number }[] = [];
+            const pMap = new Map<string, number>();
+            
+            for (const item of sapiData.SearchResultList) {
+              const price = parseFloat(item.spprice || '0');
+              if (price <= 0) continue;
+              const name = item.siteName || '未知';
+              const existing = pMap.get(name);
+              if (!existing || price < existing) pMap.set(name, price);
+            }
+            
+            for (const [p, price] of pMap) results.push({ platform: p, price });
+            results.sort((a, b) => a.price - b.price);
+
+            if (results.length > 0) {
+              return c.json({
+                keyword, source: 'manmanbuy', items: results,
+                bestPrice: results[0].price, bestPlatform: results[0].platform,
+                updatedAt: new Date().toISOString(),
+              } as PriceResult);
+            }
+          }
+        }
+      } catch (sapiErr) {
+        console.warn(`[价格查询] SAPI 失败: ${(sapiErr as Error).message}`);
+      }
+    }
+
+    // ---- 兜底：返回空结果（前端会用 AI 预估填充）----
+    console.log(`[价格查询] ℹ️ 无实时数据，返回空结果 | keyword="${keyword}"`);
+    return c.json({
+      keyword,
+      source: 'fallback',
+      items: [],
+      updatedAt: new Date().toISOString(),
+      message: '暂无实时价格数据，显示 AI 预估价格',
+    } as PriceResult);
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[价格查询] ❌ 异常: ${msg}`);
+    return c.json({
+      keyword,
+      source: 'fallback',
+      items: [],
+      error: msg,
+      message: '价格查询服务暂时不可用',
+    } as PriceResult, 503);
+  }
+});
+
+/** 慢慢买 siteId → 平台名称映射 */
+function mapSiteName(siteName: string | undefined, siteId: string | number | undefined): string {
+  if (siteName && siteName.trim()) return siteName.trim();
+  const idMap: Record<string, string> = {
+    '1': '京东', '10': '京东', '8861': '京东商城',
+    '2': '天猫', '20': '天猫', '8862': '天猫',
+    '3': '淘宝', '30': '淘宝', '8863': '淘宝',
+    '4': '苏宁', '40': '苏宁易购',
+    '5': '国美', '50': '国美在线',
+    '6': '当当', '60': '当 当网',
+    '7': '亚马逊', '70': '亚马逊中国',
+    '8': '唯品会', '80': '唯品会',
+    '9': '网易考拉', '90': '考拉海购',
+    '11': '小米商城',
+    '12': '华为商城',
+    '13': '拼多多',
+    '14': '抖音电商',
+  };
+  return idMap[String(siteId)] || '其他平台';
+}
+
+// ============================================
 // GET /api/blacklist
 // ============================================
 app.get('/api/blacklist', (c) => c.json({ items: [

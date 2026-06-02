@@ -517,8 +517,32 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
   const [error, setError] = useState<Error | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [realPriceItems, setRealPriceItems] = useState<any[] | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const reportContainerRef = useRef<HTMLDivElement>(null);
+
+  // ===== 获取慢慢买实时价格（AI 数据就绪后触发）=====
+  useEffect(() => {
+    if (!aiObject?.productName) return;
+    let cancelled = false;
+    
+    async function fetchRealPrice() {
+      try {
+        const res = await fetch(`${apiUrl}/api/price?keyword=${encodeURIComponent(aiObject.productName)}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (data?.items?.length > 0 && !cancelled) {
+          console.log(`[实时价格] ✅ ${data.items.length}个平台 | 来源=${data.source}`);
+          setRealPriceItems(data.items);
+        }
+      } catch (err) {
+        if (!cancelled) console.warn(`[实时价格] ⚠️ 获取失败:`, err);
+      }
+    }
+    
+    fetchRealPrice();
+    return () => { cancelled = true; };
+  }, [aiObject?.productName]);
 
   /**
    * 核心请求函数 — 异步 Job + 轮询模式
@@ -1165,10 +1189,19 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           </div>
         )}
 
-        {/* 全网参考底价卡片 */}
-        {object.priceReference && object.priceReference.length > 0 && (
-          <PriceReferenceCard items={object.priceReference} />
-        )}
+        {/* 全网参考底价卡片（实时价格优先，AI预估兜底） */}
+        {(() => {
+          const displayPrices = (realPriceItems && realPriceItems.length > 0)
+            ? realPriceItems
+            : object?.priceReference;
+          if (!displayPrices || displayPrices.length === 0) return null;
+          return (
+            <PriceReferenceCard
+              items={displayPrices}
+              isLive={!!realPriceItems?.length}
+            />
+          );
+        })()}
 
         {/* 参数透视 — 在坑点列表上方，体现「扒皮」犀利感 */}
         {object.specsCheck && object.specsCheck.length > 0 && (

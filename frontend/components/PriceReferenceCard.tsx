@@ -27,9 +27,10 @@ function sortByPrice(list: PriceReference[]): PriceReference[] {
 // ============================================
 interface Props {
   items: PriceReference[];
+  isLive?: boolean;
 }
 
-export default function PriceReferenceCard({ items }: Props) {
+export default function PriceReferenceCard({ items, isLive = false }: Props) {
   if (!items || items.length === 0) return null;
 
   const sorted = sortByPrice(items);
@@ -55,15 +56,15 @@ export default function PriceReferenceCard({ items }: Props) {
           />
         </svg>
         全网参考底价
-        <span className="rounded-full bg-amber-100 px-2 text-xs font-normal text-amber-600">
-          预估·仅供参考
+        <span className={`rounded-full px-2 text-xs font-normal ${isLive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+          {isLive ? '实时·仅供参考' : '预估·仅供参考'}
         </span>
       </h3>
 
       {/* 最优价高亮条 */}
-      <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+      <div className={`mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 ${isLive ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
         <svg
-          className="h-5 w-5 shrink-0 text-amber-500"
+          className={`h-5 w-5 shrink-0 ${isLive ? 'text-emerald-500' : 'text-amber-500'}`}
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
@@ -77,10 +78,10 @@ export default function PriceReferenceCard({ items }: Props) {
           />
         </svg>
         <div>
-          <p className="text-xs text-amber-600">预估最低到手价</p>
-          <p className="text-lg font-bold text-amber-700">
+          <p className={`text-xs ${isLive ? 'text-emerald-600' : 'text-amber-600'}`}>{isLive ? '实时最低价' : '预估最低到手价'}</p>
+          <p className={`text-lg font-bold ${isLive ? 'text-emerald-700' : 'text-amber-700'}`}>
             ¥{typeof best.price === 'number' ? best.price.toLocaleString() : '—'}
-            <span className="ml-2 text-xs font-medium text-amber-500">
+            <span className={`ml-2 text-xs font-medium ${isLive ? 'text-emerald-500' : 'text-amber-500'}`}>
               {best.platform}
             </span>
           </p>
@@ -110,7 +111,7 @@ export default function PriceReferenceCard({ items }: Props) {
                   ¥{typeof item.price === 'number' ? item.price.toLocaleString() : '—'}
                 </span>
                 {isBest && (
-                  <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold text-amber-700">
+                  <span className={`rounded px-1 py-0.5 text-[10px] font-bold ${isLive ? 'bg-emerald-200 text-emerald-700' : 'bg-amber-200 text-amber-700'}`}>
                     最低
                   </span>
                 )}
@@ -122,7 +123,7 @@ export default function PriceReferenceCard({ items }: Props) {
 
       {/* 免责声明 */}
       <p className="mt-4 text-center text-[11px] leading-relaxed text-gray-300">
-        价格基于 AI 知识库预估，波动频繁，仅供参考。实际价格请以各平台下单页为准。
+        价格{isLive ? '来自慢慢买实时抓取' : '基于 AI 知识库预估'}，波动频繁，仅供参考。实际价格请以各平台下单页为准。
       </p>
     </section>
   );

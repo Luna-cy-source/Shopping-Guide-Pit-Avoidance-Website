@@ -428,7 +428,7 @@ export default function HomePage() {
                 key={product.name}
                 type="button"
                 onClick={() => handleSearch(product.name)}
-                className={`group relative flex flex-col items-center overflow-hidden rounded-3xl border border-white/60 bg-gradient-to-b ${product.gradient} p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] ${product.glow}`}
+                className={`group relative flex flex-col items-center rounded-3xl border border-white/60 bg-gradient-to-b ${product.gradient} p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] ${product.glow}`}
                 style={{ animationDelay: `${idx * 80}ms` }}
               >
                 {/* 热度脉冲环 */}
