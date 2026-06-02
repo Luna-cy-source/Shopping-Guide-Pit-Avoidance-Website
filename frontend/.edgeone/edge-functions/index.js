@@ -829,9 +829,46 @@ ${PRODUCT_SCHEMA}`;
     if (path === "/api/pit-submission" && method === "POST") {
       return json({ success: true, message: "\u63D0\u4EA4\u6210\u529F" });
     }
-    if (path === "/api/feedback" && method === "POST") {
+    if (path === '/api/feedback' && method === 'POST') {
       return json({ success: true, message: "\u53CD\u9988\u5DF2\u8BB0\u5F55" });
     }
+
+    // ======== GET /api/price — 慢慢买实时比价 ========
+    if (path === '/api/price' && method === 'GET') {
+      var keyword2 = (url.searchParams.get('keyword') || '').trim();
+      if (!keyword2) return json({ error: '\u7F3A\u5C11 keyword \u53C2\u6570' }, 400);
+      try {
+        var ek = encodeURIComponent(keyword2);
+        var mmUrl2 = 'https://apapia-history.manmanbuy.com/Chrome/WareSreach.ashx?searchkey=' + ek + '&datatype=0';
+        var mmRes = await fetch(mmUrl2, { headers: { 'Accept': '*/*', 'Referer': 'https://www.manmanbuy.com/', 'User-Agent': 'Mozilla/5.0 (compatible; PriceBot/1.0)' }, signal: AbortSignal.timeout(8000) });
+        if (mmRes.ok) {
+          var txt = await mmRes.text();
+          var jstr = txt.replace(/^callbackJSONP\(/, '').replace(/\)\s*$/, '');
+          var d = JSON.parse(jstr);
+          if (d && d.ok === true && d.data) {
+            var pMap = new Map();
+            var idm = {'1':'\u4EAC\u4E1C','10':'\u4EAC\u4E1C','8861':'\u4EAC\u4E1C\u5546\u57CE','2':'\u5929\u732B','20':'\u5929\u732B','8862':'\u5929\u732B','3':'\u6DD8\u5B9D','30':'\u6DD8\u5B9D','9':'\u7F51\u6613\u8003\u62C9','90':'\u8003\u62C9\u6D77\u8D2D','13':'\u62FC\u591A\u5914','14':'\u629d\u97F3\u7535\u5546'};
+            for (var i = 0; i < (d.data || []).length; i++) {
+              var it = d.data[i];
+              var pr = parseFloat(it.spprice || it.price || '0');
+              if (pr <= 0) continue;
+              var nm = (it.siteName || '').trim() || idm[String(it.siteid)] || '\u5176\u4ED6';
+              var ex = pMap.get(nm);
+              if (!ex || pr < ex) pMap.set(nm, pr);
+            }
+            var res = [];
+            pMap.forEach(function(v, k) { res.push({ platform: k, price: v }); });
+            res.sort(function(a, b) { return a.price - b.price; });
+            if (res.length > 0)
+              return json({ keyword: keyword2, source: 'manmanbuy', items: res, bestPrice: res[0].price, bestPlatform: res[0].platform, updatedAt: new Date().toISOString() });
+          }
+        }
+        return json({ keyword: keyword2, source: 'fallback', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\u6570\u636E' });
+      } catch(e2) {
+        return json({ keyword: keyword2, source: 'fallback', items: [], error: e2.message, message: '\u67E5\u8BE2\u5931\u8D25' }, 503);
+      }
+    }
+
     return json({ error: "Not Found" }, 404);
   };
 

@@ -871,6 +871,44 @@ export const onRequest = async (context) => {
     return json({ success: true, message: '反馈已记录' });
   }
 
+  // ======== GET /api/price — 慢慢买实时比价（前端 ReportStreamer 调用） ========
+  if (path === '/api/price' && method === 'GET') {
+    const keyword = (url.searchParams.get('keyword') || '').trim();
+    if (!keyword) return json({ error: '\u7F3A\u5C11 keyword \u53C2\u6570' }, 400);
+    try {
+      const encodedKey = encodeURIComponent(keyword);
+      const mmUrl = `https://apapia-history.manmanbuy.com/Chrome/WareSreach.ashx?searchkey=${encodedKey}&datatype=0`;
+      const mmRes = await fetch(mmUrl, {
+        headers: { 'Accept': '*/*', 'Referer': 'https://www.manmanbuy.com/', 'User-Agent': 'Mozilla/5.0 (compatible; PriceBot/1.0)' },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (mmRes.ok) {
+        const text = await mmRes.text();
+        let jsonStr = text.replace(/^callbackJSONP\(/, '').replace(/\)\s*$/, '');
+        const data = JSON.parse(jsonStr);
+        if (data?.ok === true && data?.data) {
+          const platformMap = new Map();
+          const idMap = { '1':'\u4EAC\u4E1C','10':'\u4EAC\u4E1D','8861':'\u4EAC\u4E1C\u5546\u57CE','2':'\u5929\u732B','20':'\u5929\u732B','8862':'\u5929\u732B','3':'\u6DD8\u5B9D','30':'\u6DD8\u5B9D','8863':'\u6DD8\u5B9D','4':'\u82CF\u5B81','40':'\u82CF\u5B81\u6613\u8D2D','9':'\u7F51\u6613\u8003\u62C9','90':'\u8003\u62C9\u6D77\u8D2D','13':'\u62FC\u591A\u5914','14':'\u629d\u97F3\u7535\u5546' };
+          for (const item of (data.data || [])) {
+            const price = parseFloat(item.spprice || item.price || '0');
+            if (price <= 0) continue;
+            const name = (item.siteName || '').trim() || idMap[String(item.siteid)] || '\u5176\u4ED6\u5E73\u53F0';
+            const existing = platformMap.get(name);
+            if (!existing || price < existing) platformMap.set(name, price);
+          }
+          const results = [];
+          for (const [p, price] of platformMap) results.push({ platform: p, price });
+          results.sort((a, b) => a.price - b.price);
+          if (results.length > 0)
+            return json({ keyword, source: 'manmanbuy', items: results, bestPrice: results[0].price, bestPlatform: results[0].platform, updatedAt: new Date().toISOString() });
+        }
+      }
+      return json({ keyword, source: 'fallback', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\u4EF7\u683C\u6570\u636E' });
+    } catch (e) {
+      return json({ keyword, source: 'fallback', items: [], error: e.message, message: '\u4EF7\u683C\u67E5\u8BE2\u5931\u8D25' }, 503);
+    }
+  }
+
   // ======== 404 ========
   return json({ error: 'Not Found' }, 404);
 };
