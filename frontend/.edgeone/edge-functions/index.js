@@ -833,39 +833,72 @@ ${PRODUCT_SCHEMA}`;
       return json({ success: true, message: "\u53CD\u9988\u5DF2\u8BB0\u5F55" });
     }
 
-    // ======== GET /api/price — 慢慢买实时比价 ========
+    // ======== GET /api/price — 多源实时比价（京东+苏宁+慢慢买） ========
     if (path === '/api/price' && method === 'GET') {
-      var keyword2 = (url.searchParams.get('keyword') || '').trim();
-      if (!keyword2) return json({ error: '\u7F3A\u5C11 keyword \u53C2\u6570' }, 400);
+      var kw = (url.searchParams.get('keyword') || '').trim();
+      if (!kw) return json({ error: 'missing keyword' }, 400);
       try {
-        var ek = encodeURIComponent(keyword2);
-        var mmUrl2 = 'https://apapia-history.manmanbuy.com/Chrome/WareSreach.ashx?searchkey=' + ek + '&datatype=0';
-        var mmRes = await fetch(mmUrl2, { headers: { 'Accept': '*/*', 'Referer': 'https://www.manmanbuy.com/', 'User-Agent': 'Mozilla/5.0 (compatible; PriceBot/1.0)' }, signal: AbortSignal.timeout(8000) });
-        if (mmRes.ok) {
-          var txt = await mmRes.text();
-          var jstr = txt.replace(/^callbackJSONP\(/, '').replace(/\)\s*$/, '');
-          var d = JSON.parse(jstr);
-          if (d && d.ok === true && d.data) {
-            var pMap = new Map();
-            var idm = {'1':'\u4EAC\u4E1C','10':'\u4EAC\u4E1C','8861':'\u4EAC\u4E1C\u5546\u57CE','2':'\u5929\u732B','20':'\u5929\u732B','8862':'\u5929\u732B','3':'\u6DD8\u5B9D','30':'\u6DD8\u5B9D','9':'\u7F51\u6613\u8003\u62C9','90':'\u8003\u62C9\u6D77\u8D2D','13':'\u62FC\u591A\u5914','14':'\u629d\u97F3\u7535\u5546'};
-            for (var i = 0; i < (d.data || []).length; i++) {
-              var it = d.data[i];
-              var pr = parseFloat(it.spprice || it.price || '0');
-              if (pr <= 0) continue;
-              var nm = (it.siteName || '').trim() || idm[String(it.siteid)] || '\u5176\u4ED6';
-              var ex = pMap.get(nm);
-              if (!ex || pr < ex) pMap.set(nm, pr);
-            }
-            var res = [];
-            pMap.forEach(function(v, k) { res.push({ platform: k, price: v }); });
-            res.sort(function(a, b) { return a.price - b.price; });
-            if (res.length > 0)
-              return json({ keyword: keyword2, source: 'manmanbuy', items: res, bestPrice: res[0].price, bestPlatform: res[0].platform, updatedAt: new Date().toISOString() });
-          }
+        var ekw = encodeURIComponent(kw);
+        var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+        // --- 并行抓取多个来源 ---
+        var jdPromise = fetch('https://search.jd.com/Search?keyword=' + ekw + '&enc=utf-8', {
+          headers: { 'User-Agent': UA, 'Accept': 'text/html', 'Accept-Language': 'zh-CN,zh;q=0.9' },
+          signal: AbortSignal.timeout(8000)
+        }).then(async function(r) {
+          if (!r.ok) return [];
+          var html = await r.text();
+          var prices = [], m;
+          // data-price 属性
+          var re = /data-price="([\d.]+)"/g;
+          while ((m = re.exec(html)) !== null) { var p = parseFloat(m[1]); if (p > 10) prices.push(p); }
+          // 兜底：¥ 文本
+          if (prices.length === 0) { var re2 = /\\u00a5\s*([\d,.]+)/g; while ((m = re2.exec(html)) !== null) { var p = parseFloat(m[1].replace(/,/g,'')); if (p > 10) prices.push(p); } }
+          if (prices.length > 0) { prices.sort(function(a,b){return a-b}); return [{ platform:'京东', price:prices[Math.floor(prices.length/2)], source:'jd_search' }]; }
+          return [];
+        }).catch(function() { return []; });
+
+        var snPromise = fetch('https://search.suning.com/' + ekw + '/', {
+          headers: { 'User-Agent': UA },
+          signal: AbortSignal.timeout(8000)
+        }).then(async function(r) {
+          if (!r.ok) return [];
+          var html = await r.text();
+          var prices = [], m;
+          var re = /"price"\s*:\s*"([\d.]+)"/g;
+          while ((m = re.exec(html)) !== null) { var p = parseFloat(m[1]); if (p > 10) prices.push(p); }
+          if (prices.length > 0) { var avg = Math.round(prices.reduce(function(a,b){return a+b},0)/prices.length); return [{ platform:'苏宁', price:avg, source:'suning_search' }]; }
+          return [];
+        }).catch(function() { return []; });
+
+        var mmPromise = fetch('https://search.manmanbuy.com/search?q=' + ekw, {
+          headers: { 'User-Agent': UA, 'Accept': 'text/html' },
+          signal: AbortSignal.timeout(8000)
+        }).then(async function(r) {
+          if (!r.ok) return [];
+          var html = await r.text();
+          var results = [], m;
+          // 提取价格
+          var prices = [], platRe = /(京东|淘宝|天猫|拼多多|苏宁)/g, plats = [];
+          var priceRe = /<span[^>]*class="[^"]*price[^"]*"[^>]*>\\u00a5?([\d,.]+)<\/span>/gi;
+          while ((m = priceRe.exec(html)) !== null) { var p = parseFloat(m[1].replace(/,/g,'')); if (p > 0) prices.push(p); }
+          while ((m = platRe.exec(html)) !== null) plats.push(m[1]);
+          var up = [...new Set(prices)].slice(0,3), upl = [...new Set(plats)];
+          for (var i = 0; i < up.length; i++) results.push({ platform: upl[i]||['淘宝','拼多多','天猫'][i]||'\u7535\u5546\u5E73\u53F0', price: up[i], source:'manmanbuy' });
+          return results;
+        }).catch(function() { return []; });
+
+        var all = await Promise.all([jdPromise, snPromise, mmPromise]);
+        var merged = [];
+        for (var ai = 0; ai < all.length; ai++) { for (var j = 0; j < all[ai].length; j++) merged.push(all[ai][j]); }
+
+        if (merged.length > 0) {
+          merged.sort(function(a,b){return a.price-b.price});
+          return json({ keyword: kw, source: 'multi', items: merged, bestPrice: merged[0].price, bestPlatform: merged[0].platform, updatedAt: new Date().toISOString() });
         }
-        return json({ keyword: keyword2, source: 'fallback', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\u6570\u636E' });
-      } catch(e2) {
-        return json({ keyword: keyword2, source: 'fallback', items: [], error: e2.message, message: '\u67E5\u8BE2\u5931\u8D25' }, 503);
+        return json({ keyword: kw, source: 'none', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\u4EF7\u683C' });
+      } catch(e3) {
+        return json({ keyword: kw, source: 'error', items: [], error: e3.message }, 503);
       }
     }
 
