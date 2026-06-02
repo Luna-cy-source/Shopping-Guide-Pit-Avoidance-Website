@@ -33,6 +33,13 @@ export default function BlacklistPage() {
   const [statusMap, setStatusMap] = useState<Record<number, ProductStatus>>({}); // 步骤5：状态管理
   const [statusNoteModal, setStatusNoteModal] = useState<{ id: number; status: ProductStatus } | null>(null);
 
+  // 重置所有状态
+  const handleReset = () => {
+    const reset: Record<number, ProductStatus> = {};
+    items.forEach((item) => { reset[item.id] = 'problem'; });
+    setStatusMap(reset);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -137,9 +144,22 @@ export default function BlacklistPage() {
         </p>
       )}
 
-      {/* ===== 统计摘要区 ===== */}
+      {/* ===== 统计摘要区 + 重置 ===== */}
       {!loading && !error && items.length > 0 && (
-        <div className="mt-8 grid w-full max-w-2xl grid-cols-3 gap-3">
+        <div className="mt-8 w-full max-w-2xl">
+          <div className="mb-3 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={handleReset}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 transition-all hover:border-red-300 hover:text-red-500 active:scale-[0.98]"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+              </svg>
+              重置状态
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
           <div className="rounded-2xl border border-red-100 bg-red-50/50 px-4 py-4 text-center">
             <p className="text-2xl font-bold text-red-500">{items.length}</p>
             <p className="mt-0.5 text-[11px] font-medium text-red-400">本月上榜商品</p>

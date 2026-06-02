@@ -10,6 +10,7 @@ export interface BookmarkItem {
   productName: string; // 标题/商品名
   savedAt: number;     // Date.now()
   type: BookmarkType;  // 收藏类型
+  reportData?: any;    // 存储的报告/结果完整数据（用于直接渲染）
 }
 
 export type BookmarkType = 'report' | 'used_check' | 'clinic';
@@ -43,12 +44,23 @@ export function useBookmarks() {
     [bookmarks]
   );
 
-  const addBookmark = useCallback((url: string, productName: string, type: BookmarkType = 'report') => {
+  const addBookmark = useCallback((url: string, productName: string, type: BookmarkType = 'report', reportData?: any) => {
     if (!url || !productName) return;
     setBookmarks((prev) => {
-      if (prev.some((b) => b.url === url)) return prev;
+      const existing = prev.find((b) => b.url === url);
+      // 已收藏时更新报告数据
+      if (existing) {
+        if (reportData && !existing.reportData) {
+          const next = prev.map((b) =>
+            b.url === url ? { ...b, reportData } : b
+          );
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+          return next;
+        }
+        return prev;
+      }
       const next = [
-        { url, productName: productName.trim(), savedAt: Date.now(), type },
+        { url, productName: productName.trim(), savedAt: Date.now(), type, ...(reportData ? { reportData } : {}) },
         ...prev,
       ].slice(0, MAX_ITEMS);
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}

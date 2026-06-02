@@ -288,6 +288,16 @@ export default function UsedCheckPage() {
 
   const hasResult = result?.intent === 'used_market';
 
+  // ==================== 重置（清空结果回到初始状态）====================
+  const handleRetry = () => {
+    setResult(null);
+    setError(null);
+    setIsFallback(false);
+    setDescription('');
+    setSubmittedQuery('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // ==================== 核心分析函数 ====================
   const callAnalysisAPI = async (prompt: string): Promise<UsedMarketResult> => {
     if (abortRef.current) abortRef.current.abort();
@@ -432,7 +442,8 @@ export default function UsedCheckPage() {
       {/* ===== 顶部导航：返回 + 收藏 ===== */}
       <div className="w-full max-w-4xl">
         <TopBar
-          backLabel="← 返回首页"
+          backLabel={hasResult ? '↻ 重试' : '← 返回首页'}
+          onBackAction={hasResult ? handleRetry : undefined}
           showBookmark={hasResult}
           bookmarkName={`二手防坑: ${result?.productName || description.slice(0, 30)}`}
           bookmarkUrl={`/used-check?q=${encodeURIComponent(description)}`}
