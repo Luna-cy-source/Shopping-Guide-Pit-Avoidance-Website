@@ -260,19 +260,19 @@ export default function ProfilePage() {
                               key={item.url}
                               className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:border-amber-200 hover:bg-amber-50/30"
                             >
-                              {/* 选品推荐跳转到报告页，其他保持原链接 */}
+                              {/* 选品推荐跳转到选品诊所页面 */}
                               {item.type === 'clinic' ? (
                                 <button
                                   type="button"
                                   onClick={() => {
                                     const q = item.productName.replace(/^选品推荐:\s*/, '');
-                                    router.push(`/report?q=${encodeURIComponent(q)}`);
+                                    router.push(`/clinic?q=${encodeURIComponent(q)}`);
                                   }}
-                                  className="min-w-0 flex-1 text-left text-[13px] font-medium text-slate-700 transition-colors hover:text-amber-700 truncate"
+                                  className="min-w-0 flex-1 text-left text-[13px] font-medium text-slate-700 transition-colors hover:text-purple-700 truncate"
                                 >
                                   {item.productName}
                                   <span className="ml-1.5 text-[10px] font-normal opacity-0 group-hover:opacity-100 transition-opacity text-purple-500">
-                                    → 查看报告
+                                    → 查看方案
                                   </span>
                                 </button>
                               ) : (

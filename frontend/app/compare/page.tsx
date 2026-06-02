@@ -111,7 +111,7 @@ function ProductCard({
 
   return (
     <div
-      className={`card-premium shimmer relative p-6 transition-shadow hover:shadow-md ${
+      className={`card-premium shimmer relative p-6 transition-shadow hover:shadow-md overflow-visible ${
         isWinner ? 'border-amber-300 ring-2 ring-amber-100' : ''
       }`}
     >
