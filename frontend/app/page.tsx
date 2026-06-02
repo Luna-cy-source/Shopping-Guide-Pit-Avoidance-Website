@@ -27,12 +27,12 @@ const FALLBACK_QUERIES = [
    ============================================================ */
 
 const HOT_PRODUCTS = [
-  { name: 'SK-II神仙水', category: '护肤', tag: '热', theme: 'rose', gradient: 'from-rose-50 via-pink-50 to-rose-50', iconBg: 'bg-gradient-to-br from-rose-100 to-pink-200', iconText: 'text-rose-600', glow: 'group-hover:shadow-rose-100' },
-  { name: '大疆Mini 4 Pro', category: '数码', tag: '热', theme: 'amber', gradient: 'from-amber-50 via-yellow-50 to-amber-50', iconBg: 'bg-gradient-to-br from-amber-100 to-yellow-200', iconText: 'text-amber-600', glow: 'group-hover:shadow-amber-100' },
-  { name: '戴尔XPS 15', category: '笔记本', tag: '热', theme: 'sky', gradient: 'from-sky-50 via-blue-50 to-sky-50', iconBg: 'bg-gradient-to-br from-sky-100 to-blue-200', iconText: 'text-sky-600', glow: 'group-hover:shadow-sky-100' },
-  { name: 'iPhone 17 Pro Max', category: '手机', tag: '新', theme: 'violet', gradient: 'from-violet-50 via-purple-50 to-violet-50', iconBg: 'bg-gradient-to-br from-violet-100 to-purple-200', iconText: 'text-violet-600', glow: 'group-hover:shadow-violet-100' },
-  { name: '戴森V16', category: '家电', tag: '热', theme: 'emerald', gradient: 'from-emerald-50 via-teal-50 to-emerald-50', iconBg: 'bg-gradient-to-br from-emerald-100 to-teal-200', iconText: 'text-emerald-600', glow: 'group-hover:shadow-emerald-100' },
-  { name: '花西子空气蜜粉', category: '美妆', tag: '热', theme: 'fuchsia', gradient: 'from-fuchsia-50 via-pink-50 to-fuchsia-50', iconBg: 'bg-gradient-to-br from-fuchsia-100 to-pink-200', iconText: 'text-fuchsia-600', glow: 'group-hover:shadow-fuchsia-100' },
+  { name: 'SK-II神仙水', category: '护肤', theme: 'rose', gradient: 'from-rose-50/80 via-pink-50/40 to-white', iconBg: 'bg-gradient-to-br from-rose-100 to-pink-200', iconText: 'text-rose-500', glow: 'hover:shadow-rose-100/50' },
+  { name: '大疆Mini 4 Pro', category: '数码', theme: 'amber', gradient: 'from-amber-50/80 via-yellow-50/40 to-white', iconBg: 'bg-gradient-to-br from-amber-100 to-yellow-200', iconText: 'text-amber-500', glow: 'hover:shadow-amber-100/50' },
+  { name: '戴尔XPS 15', category: '笔记本', theme: 'sky', gradient: 'from-sky-50/80 via-blue-50/40 to-white', iconBg: 'bg-gradient-to-br from-sky-100 to-blue-200', iconText: 'text-sky-500', glow: 'hover:shadow-sky-100/50' },
+  { name: 'iPhone 17 Pro Max', category: '手机', theme: 'violet', gradient: 'from-violet-50/80 via-purple-50/40 to-white', iconBg: 'bg-gradient-to-br from-violet-100 to-purple-200', iconText: 'text-violet-500', glow: 'hover:shadow-violet-100/50' },
+  { name: '戴森V16', category: '家电', theme: 'emerald', gradient: 'from-emerald-50/80 via-teal-50/40 to-white', iconBg: 'bg-gradient-to-br from-emerald-100 to-teal-200', iconText: 'text-emerald-500', glow: 'hover:shadow-emerald-100/50' },
+  { name: '花西子空气蜜粉', category: '美妆', theme: 'fuchsia', gradient: 'from-fuchsia-50/80 via-pink-50/40 to-white', iconBg: 'bg-gradient-to-br from-fuchsia-100 to-pink-200', iconText: 'text-fuchsia-500', glow: 'hover:shadow-fuchsia-100/50' },
 ];
 
 /* 类别图标 SVG */
@@ -428,40 +428,22 @@ export default function HomePage() {
                 key={product.name}
                 type="button"
                 onClick={() => handleSearch(product.name)}
-                className={`group relative flex flex-col items-center rounded-3xl border border-white/60 bg-gradient-to-b ${product.gradient} p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] ${product.glow}`}
-                style={{ animationDelay: `${idx * 80}ms` }}
+                className={`group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-100/80 bg-gradient-to-b ${product.gradient} p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md ${product.glow}`}
+                style={{ animationDelay: `${idx * 60}ms` }}
               >
-                {/* 热度脉冲环 */}
-                {product.tag && (
-                  <>
-                    <span className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-red-500/20 animate-pulse-ring" />
-                    <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-orange-500 text-[10px] text-white shadow-md z-10">
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-                        <path d="M12 2c0 4-4 6-4 10 0 2.21 1.79 4 4 4s4-1.79 4-4c0-4-4-6-4-10zm0 16c-1.1 0-2-.9-2-2h4c0 1.1-.9 2-2 2z"/>
-                      </svg>
-                    </span>
-                  </>
-                )}
-
-                {/* 微光装饰 */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
-
                 {/* 图标容器 */}
-                <div className={`relative mb-3 flex h-12 w-12 items-center justify-center rounded-2xl ${product.iconBg} shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3`}>
-                  <CategoryIcon category={product.category} className={`w-6 h-6 ${product.iconText}`} />
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${product.iconBg} transition-transform duration-300 group-hover:scale-105`}>
+                  <CategoryIcon category={product.category} className={`w-5 h-5 ${product.iconText}`} />
                 </div>
 
                 {/* 商品名 */}
-                <span className="text-[13px] font-bold text-slate-800 truncate w-full text-center leading-tight">
+                <span className="text-[12px] font-semibold text-slate-700 truncate w-full text-center leading-tight">
                   {product.name}
                 </span>
 
                 {/* 分类标签 */}
-                <span className="mt-1 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-medium text-slate-500 backdrop-blur-sm border border-slate-100/60">
+                <span className="inline-flex items-center rounded-lg bg-white/90 px-2 py-0.5 text-[9.5px] font-medium text-slate-400 shadow-xs border border-slate-50">
                   {product.category}
-                  {product.tag && (
-                    <span className="ml-1 text-[9px] font-bold text-orange-500">{product.tag}</span>
-                  )}
                 </span>
               </button>
             ))
