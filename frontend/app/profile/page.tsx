@@ -107,7 +107,7 @@ function AchievementWall({ progress }: { progress: UserProgress | null }) {
 export default function ProfilePage() {
   const router = useRouter();
   const { history, hasHistory, clearHistory, removeHistoryItem } = useSearchHistory();
-  const { bookmarks, hasBookmarks, removeBookmark } = useBookmarks();
+  const { bookmarks, hasBookmarks, removeBookmark, getBookmarksByType } = useBookmarks();
   const [progress, setProgress] = useState<UserProgress | null>(null);
 
   useEffect(() => {
@@ -224,6 +224,11 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-2">
                   <span className="text-lg">⭐</span>
                   <h2 className="text-base font-bold text-slate-800">我的收藏</h2>
+                  {hasBookmarks && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                      {bookmarks.length}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -231,36 +236,62 @@ export default function ProfilePage() {
                 <div className="flex flex-col items-center py-6 text-slate-400">
                   <span className="mb-2 text-2xl">📭</span>
                   <p className="text-xs">暂无收藏</p>
-                  <p className="mt-1 text-[10px] text-slate-300">在报告页点击「收藏此报告」即可保存到这里</p>
+                  <p className="mt-1 text-[10px] text-slate-300">在报告页、二手防坑或选品诊所点击「收藏」即可保存到这里</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {bookmarks.map((item) => (
-                    <div
-                      key={item.url}
-                      className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:border-amber-200 hover:bg-amber-50/30"
-                    >
-                      <Link
-                        href={item.url}
-                        className="min-w-0 flex-1 text-[13px] font-medium text-slate-700 transition-colors hover:text-amber-700 truncate"
-                      >
-                        {item.productName}
-                      </Link>
-                      <div className="ml-2 flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-slate-300">{formatTime(item.savedAt)}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeBookmark(item.url)}
-                          className="rounded-md p-1 text-slate-300 transition-colors hover:bg-red-100 hover:text-red-500"
-                          title="取消收藏"
-                        >
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                <div className="space-y-4">
+                  {/* 按类型分组显示 */}
+                  {[
+                    { type: 'report' as const, label: '避坑报告', icon: '📋', color: 'text-red-500' },
+                    { type: 'used_check' as const, label: '二手防坑', icon: '🛡️', color: 'text-blue-500' },
+                    { type: 'clinic' as const, label: '选品推荐', icon: '💡', color: 'text-purple-500' },
+                  ].map(({ type, label, icon, color }) => {
+                    const items = getBookmarksByType(type);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={type}>
+                        <div className={`mb-2 flex items-center gap-1.5 text-xs font-semibold ${color}`}>
+                          <span>{icon}</span>{label} ({items.length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {items.map((item) => (
+                            <div
+                              key={item.url}
+                              className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:border-amber-200 hover:bg-amber-50/30"
+                            >
+                              <Link
+                                href={item.url}
+                                className="min-w-0 flex-1 text-[13px] font-medium text-slate-700 transition-colors hover:text-amber-700 truncate"
+                              >
+                                {item.productName}
+                              </Link>
+                              <div className="ml-2 flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-slate-300">{formatTime(item.savedAt)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeBookmark(item.url)}
+                                  className="rounded-md p-1 text-slate-300 transition-colors hover:bg-red-100 hover:text-red-500"
+                                  title="取消收藏"
+                                >
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {/* 兼容旧数据（无type字段的） */}
+                  {
+                    (() => {
+                      const legacyItems = bookmarks.filter((b) => !b.type || b.type === 'report');
+                      // 已在上面 report 类型中展示过，这里不需要重复渲染
+                      return null;
+                    })()
+                  }
                 </div>
               )}
             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import BookmarkButton, { TopBar } from '../../components/BookmarkButton';
 
 /* ============================================
    类型定义
@@ -441,6 +442,17 @@ export default function ClinicPage() {
 
   return (
     <main className="flex flex-1 flex-col items-center px-4 pt-16">
+      {/* ===== 顶部导航：返回 + 收藏 ===== */}
+      <div className="w-full max-w-4xl">
+        <TopBar
+          backLabel="← 返回首页"
+          showBookmark={hasResult}
+          bookmarkName={`选品推荐: ${description.slice(0, 30)}`}
+          bookmarkUrl={`/clinic?q=${encodeURIComponent(description)}`}
+          bookmarkType="clinic"
+        />
+      </div>
+
       {/* ===== 页面标题区 ===== */}
       <section className="mb-8 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-50 text-3xl shadow-sm ring-1 ring-purple-100">
