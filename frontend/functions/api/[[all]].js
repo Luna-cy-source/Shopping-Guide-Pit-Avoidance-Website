@@ -12,9 +12,22 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 const MAX_RETRIES = 2; // DeepSeek 失败时重试次数
 
 // ============================================
-// 价格抓取服务
+// 价格抓取服务（安全加载：模块不可用时降级为空操作）
 // ============================================
-const { fetchRealPrices, fetchPriceHistory, formatPriceData } = require('../price-fetcher.js');
+let fetchRealPrices, fetchPriceHistory, formatPriceData;
+try {
+  const pf = require('../price-fetcher.js');
+  fetchRealPrices = pf.fetchRealPrices;
+  fetchPriceHistory = pf.fetchPriceHistory;
+  formatPriceData = pf.formatPriceData;
+  console.log('[Init] ✅ 价格抓取服务加载成功');
+} catch (e) {
+  console.warn('[Init] ⚠️ 价格抓取服务加载失败，价格功能将降级:', e?.message);
+  // 降级：返回空结果
+  fetchRealPrices = async () => [];
+  fetchPriceHistory = async () => ({ points: [], source: 'none', note: '服务不可用' });
+  formatPriceData = () => ({ platforms: [], sources: [] });
+}
 
 // ============================================
 // 通用原则（所有 Intent 共享）
