@@ -123,7 +123,7 @@ export default function PriceReferenceCard({ items, isLive = false }: Props) {
 
       {/* 免责声明 */}
       <p className="mt-4 text-center text-[11px] leading-relaxed text-gray-300">
-        价格{isLive ? '来自慢慢买实时抓取' : '基于 AI 知识库预估'}，波动频繁，仅供参考。实际价格请以各平台下单页为准。
+        价格{isLive ? '多源实时抓取' : '基于 AI 知识库预估'}，波动频繁，仅供参考。实际价格请以各平台下单页为准。
       </p>
     </section>
   );
