@@ -644,15 +644,36 @@ export default function HomePage() {
                   <div className="space-y-2">
                     {bookmarks.map((bm) => (
                       <div key={bm.url} className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:bg-white hover:shadow-sm">
-                        <Link href={bm.url} onClick={() => setBookmarksOpen(false)} className="flex min-w-0 flex-1 items-center gap-3">
-                          <svg className="h-4 w-4 shrink-0 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
-                          </svg>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-800">{bm.productName}</p>
-                            <p className="text-[11px] text-slate-400">{formatRelativeTime(bm.savedAt)}</p>
-                          </div>
-                        </Link>
+                        {/* 选品推荐类型跳转报告页，其他走原链接 */}
+                        {bm.type === 'clinic' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const q = bm.productName.replace(/^选品推荐:\s*/, '');
+                              setBookmarksOpen(false);
+                              router.push(`/report?q=${encodeURIComponent(q)}`);
+                            }}
+                            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                          >
+                            <svg className="h-4 w-4 shrink-0 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                            </svg>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800">{bm.productName}</p>
+                              <p className="text-[11px] text-purple-500">→ 查看避坑报告</p>
+                            </div>
+                          </button>
+                        ) : (
+                          <Link href={bm.url} onClick={() => setBookmarksOpen(false)} className="flex min-w-0 flex-1 items-center gap-3">
+                            <svg className="h-4 w-4 shrink-0 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                            </svg>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800">{bm.productName}</p>
+                              <p className="text-[11px] text-slate-400">{formatRelativeTime(bm.savedAt)}</p>
+                            </div>
+                          </Link>
+                        )}
                         <button type="button" onClick={() => removeBookmark(bm.url)} className="ml-2 shrink-0 rounded p-1 text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-400 group-hover:opacity-100" title="取消收藏">
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

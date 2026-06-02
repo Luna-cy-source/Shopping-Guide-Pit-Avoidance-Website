@@ -116,7 +116,7 @@ function ProductCard({
       }`}
     >
       {isWinner && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 px-4 py-1 text-[10px] font-bold text-white shadow-md">
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 px-3.5 py-0.5 text-[9px] font-bold text-white shadow-md whitespace-nowrap z-10">
           🏆 优胜推荐
         </div>
       )}

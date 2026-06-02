@@ -947,11 +947,11 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           )}
         </div>
 
-        {/* ===== 主仪表盘卡片：左图+型号 | 右仪表盘 ===== */}
+        {/* ===== 主仪表盘卡片：左产品信息 | 右图表评分 ===== */}
         <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="flex flex-col md:flex-row">
-            {/* ---------- 左侧列：产品图 + 细分型号透视 ---------- */}
-            <div className="flex flex-col border-gray-100 bg-gray-50/50 p-6 md:w-[45%] md:border-r">
+          <div className="flex flex-col lg:flex-row">
+            {/* ---------- 左侧列：产品信息区 ---------- */}
+            <div className="flex flex-col border-gray-100 bg-gray-50/40 p-5 lg:w-[48%] lg:border-r lg:p-6">
               {/* ===== SKU 型号选择器（新版交互） ===== */}
               {hasSkus ? (
                 <div className="space-y-4">
@@ -1062,10 +1062,10 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
 
             </div>
 
-            {/* ---------- 右侧列：仪表盘 + 槽点雷达图 ---------- */}
-            <div className="flex flex-col items-center justify-center p-6 md:w-[55%]">
+            {/* ---------- 右侧列：雷达图 + 评分仪表盘 ---------- */}
+            <div className="flex flex-col items-center justify-center gap-2 p-5 lg:w-[52%] lg:p-6 lg:gap-4">
               {/* 槽点分布雷达图 */}
-              <div className="mb-5 w-full">
+              <div className="w-full max-w-[280px]">
                 <FlawRadar data={flawRadar} />
               </div>
               {hasScore ? (

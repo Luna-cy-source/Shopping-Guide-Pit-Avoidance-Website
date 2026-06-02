@@ -103,7 +103,7 @@
     100% { transform: translateX(-100%); }
   }
   .animate-ticker {
-    animation: ticker-scroll 24s linear infinite;
+    animation: ticker-scroll 45s linear infinite;
   }
 
   /* ===== 微妙上浮入场动画 ===== */
