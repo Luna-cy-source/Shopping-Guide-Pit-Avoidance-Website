@@ -11,6 +11,7 @@ import SpecsCheckTable from './SpecsCheckTable';
 import VerifySearch from './VerifySearch';
 import CommerceBanner from './CommerceBanner';
 import MarkdownRenderer from './MarkdownRenderer';
+import html2canvas from 'html2canvas';
 import { ProductStructuredData } from './ProductStructuredData';
 
 // ============================================
@@ -514,7 +515,10 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
   const [aiObject, setAiObject] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const reportContainerRef = useRef<HTMLDivElement>(null);
 
   /**
    * 核心请求函数 — 异步 Job + 轮询模式
@@ -866,8 +870,34 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
       }
     }
 
+    // 导出报告处理函数
+    const handleExportReport = useCallback(async () => {
+      if (!reportContainerRef.current) return;
+      setExporting(true);
+      try {
+        const canvas = await html2canvas(reportContainerRef.current, {
+          backgroundColor: '#f8fafc',
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          width: reportContainerRef.current.scrollWidth,
+          windowWidth: reportContainerRef.current.scrollWidth,
+        });
+        const link = document.createElement('a');
+        link.download = `避坑报告_${object.productName || query}_${new Date().toISOString().slice(0,10)}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (err) {
+        console.error('[导出] 失败:', err);
+        alert('导出失败，请重试');
+      } finally {
+        setExporting(false);
+        setExportOpen(false);
+      }
+    }, [object.productName, query]);
+
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" ref={reportContainerRef}>
         {/* 流中断警告横幅（有部分数据时） */}
         {showStreamError && (
           <StreamErrorBanner
@@ -1090,17 +1120,29 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
         {/* 分享海报 & 导出报告（步骤9：登录门控） */}
         {hasScore && flaws.length > 0 && (
           <div className="flex justify-end gap-2">
-            {/* 导出报告按钮 */}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-green-300 hover:text-green-600 hover:shadow-md"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              导出报告
-            </button>
+            {/* 导出报告按钮 — 登录后可用 */}
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={() => setExportOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-emerald-300 hover:text-emerald-600 hover:shadow-md active:scale-95"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                导出报告
+              </button>
+            ) : (
+              <Link
+                href="/sign-in"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-400 shadow-sm transition-all hover:border-gray-300"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                导出报告
+              </Link>
+            )}
             {/* 分享海报按钮 */}
             {isAuthenticated ? (
               <SharePoster
@@ -1123,84 +1165,10 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           </div>
         )}
 
-        {/* 价格分析 */}
-        <section className="rounded-xl border border-gray-100 bg-white p-6">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-400">
-            <svg
-              className="h-4 w-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            价格分析
-          </h3>
-          {object.priceAnalysis ? (
-            <MarkdownRenderer
-              content={object.priceAnalysis}
-              isStreaming={isLoading}
-            />
-          ) : isLoading ? (
-            <p className="animate-pulse text-gray-300">
-              正在分析价格...
-            </p>
-          ) : (() => {
-            const name = object.productName || query;
-            // 根据名称哈希生成合理的价格区间分析
-            const h = name.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0);
-            const low = (h % 300 + 100);
-            const high = low * (3 + (h % 5));
-            const mid = Math.round((low + high) / 2);
-            return (
-              <div className="space-y-3 text-sm leading-relaxed text-slate-600">
-                <p><strong>📊 价格区间分析：</strong>「{name}」在当前市场的主流定价区间约为 <span className="font-bold text-red-600">¥{low.toLocaleString()} ~ ¥{high.toLocaleString()}</span>，中位价约 ¥{mid.toLocaleString()}。</p>
-                <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3 space-y-1.5">
-                  <p className="text-xs"><strong>💰 入手时机建议：</strong></p>
-                  <ul className="ml-4 list-disc text-xs space-y-0.5 text-slate-500">
-                    <li>日常购买：关注京东自营/天猫旗舰店的日常活动价，目标价 ¥{(mid * 0.85).toLocaleString()} 以内</li>
-                    <li>大促入手：618、双11、年货节（1~2月）通常有 15%~30% 的降价幅度</li>
-                    <li>清仓捡漏：新品发布前 1~2 月，旧款可能降至 ¥{(mid * 0.6).toLocaleString()} 左右</li>
-                  </ul>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">⚠️ 以上价格为 AI 基于市场行情估算，实际请以各平台实时售价为准。</p>
-              </div>
-            );
-          })()}
-        </section>
-
         {/* 全网参考底价卡片 */}
         {object.priceReference && object.priceReference.length > 0 && (
           <PriceReferenceCard items={object.priceReference} />
         )}
-
-        {/* 价格走势图 */}
-        <section className="rounded-xl border border-gray-100 bg-white p-6">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-400">
-            <svg
-              className="h-4 w-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1-3m1-3l2.25 2.25L15 9l2.25 3"
-              />
-            </svg>
-            价格走势（近12个月）
-          </h3>
-          <PriceChart productName={object.productName || undefined} />
-        </section>
 
         {/* 参数透视 — 在坑点列表上方，体现「扒皮」犀利感 */}
         {object.specsCheck && object.specsCheck.length > 0 && (
@@ -1436,6 +1404,68 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
           <p className="text-center text-xs text-gray-400">
             AI 正在结合真实评价持续分析中...
           </p>
+        )}
+
+        {/* ===== 导出报告弹窗 ===== */}
+        {exportOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setExportOpen(false)}
+          >
+            <div
+              className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
+                  <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">导出避坑报告</h3>
+                  <p className="text-xs text-gray-400">将完整报告保存为高清 PNG 图片</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  报告将以 <strong>2倍分辨率 PNG</strong> 格式导出，包含完整的评分、坑点分析、参数对比等内容。
+                </p>
+              </div>
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen(false)}
+                  className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportReport}
+                  disabled={exporting}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-emerald-600 active:scale-[0.98] disabled:opacity-60"
+                >
+                  {exporting ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      导出中...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                      确认导出
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
