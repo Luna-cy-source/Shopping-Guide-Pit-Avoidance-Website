@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import Link from 'next/link';
+import { useAuth } from '../hooks/useAuth';
 import {
   getUserProgress,
   getLevelProgressPercent,
@@ -11,16 +12,14 @@ import {
   type UserProgress,
 } from '../lib/userLevel';
 
-const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
 // =====================================================
-// 用户等级卡片 — 大气简洁版（适配报告页右上角）
-// 与登录状态强关联：未登录引导登录，已登录展示数据
+// 用户等级卡片 — 使用自定义认证系统
 // =====================================================
 
 export default function UserLevelCard() {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [mounted, setMounted] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   const refresh = useCallback(() => {
     setProgress(getUserProgress());
@@ -72,32 +71,28 @@ export default function UserLevelCard() {
           </div>
         </div>
 
-        {HAS_CLERK ? (
-          <SignedIn>
-            {checkedIn ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-                已签到
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleCheckIn}
-                className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm shadow-blue-200/40 transition-all hover:shadow-md active:scale-95"
-              >
-                签到
-              </button>
-            )}
-          </SignedIn>
-        ) : null}
-        {HAS_CLERK ? (
-          <SignedOut>
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-400">未登录</span>
-          </SignedOut>
+        {/* 登录状态：签到按钮或已签到标签 */}
+        {isAuthenticated ? (
+          checkedIn ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              已签到
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCheckIn}
+              className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm shadow-blue-200/40 transition-all hover:shadow-md active:scale-95"
+            >
+              签到
+            </button>
+          )
         ) : (
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-400">未登录</span>
+          <Link href="/sign-in" className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:bg-slate-100">
+            未登录
+          </Link>
         )}
       </div>
 
@@ -131,33 +126,22 @@ export default function UserLevelCard() {
         ))}
       </div>
 
-      {/* 底部：登录关联 */}
+      {/* 底部：登录提示或使用说明 */}
       <div className="border-t border-slate-50 px-5 py-3">
-        {HAS_CLERK ? (
-          <>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 py-2 text-[12px] font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.98]"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                  </svg>
-                  登录解锁等级追踪
-                </button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
-              <p className="text-center text-[10px] leading-relaxed text-slate-400">
-                💡 搜索商品、查看报告、使用对比功能都能获得 XP，升级解锁更多特权
-              </p>
-            </SignedIn>
-          </>
-        ) : (
+        {isAuthenticated ? (
           <p className="text-center text-[10px] leading-relaxed text-slate-400">
             💡 搜索商品、查看报告、使用对比功能都能获得 XP，升级解锁更多特权
           </p>
+        ) : (
+          <Link
+            href="/sign-in"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 py-2 text-[12px] font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.98]"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+            登录解锁等级追踪
+          </Link>
         )}
       </div>
     </div>

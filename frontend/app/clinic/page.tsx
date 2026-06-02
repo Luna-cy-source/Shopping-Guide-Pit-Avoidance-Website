@@ -491,13 +491,55 @@ export default function ClinicPage() {
             disabled={isLoading}
           />
 
-          {/* 预算滑块 */}
+          {/* 预算滑块（优化设计：预设档位 + 精细滑块） */}
           <div className="border-t border-slate-50 px-5 py-3">
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-medium text-slate-500">💰 预算范围</span>
-              <span className="text-sm font-bold text-slate-900">¥{budget.toLocaleString()}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-bold text-slate-900">¥{budget.toLocaleString()}</span>
+                {budget === 0 && <span className="text-[10px] text-slate-400">(不限)</span>}
+              </div>
             </div>
-            <input type="range" min={0} max={10000} step={100} value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="w-full h-1.5 rounded-full appearance-none bg-slate-200 cursor-pointer" style={{ accentColor: '#8b5cf6' }} />
+
+            {/* 预设预算档位按钮 */}
+            <div className="mb-2.5 flex flex-wrap gap-1.5">
+              {[
+                { label: '不限', value: 0, desc: '学生党' },
+                { label: '¥200', value: 200, desc: '入门' },
+                { label: '¥500', value: 500, desc: '日常' },
+                { label: '¥1000', value: 1000, desc: '进阶' },
+                { label: '¥3000', value: 3000, desc: '品质' },
+                { label: '¥8000', value: 8000, desc: '高端' },
+              ].map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => setBudget(preset.value)}
+                  className={`rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all ${
+                    budget === preset.value
+                      ? 'bg-purple-500 text-white shadow-sm shadow-purple-200'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {preset.label}
+                  <span className={`ml-0.5 ${budget === preset.value ? 'text-purple-200' : 'text-slate-400'}`}>
+                    {preset.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* 自定义滑条 */}
+            <input
+              type="range"
+              min={0}
+              max={10000}
+              step={100}
+              value={budget}
+              onChange={(e) => setBudget(Number(e.target.value))}
+              className="w-full h-1.5 rounded-full appearance-none bg-slate-200 cursor-pointer"
+              style={{ accentColor: '#8b5cf6' }}
+            />
             <div className="flex justify-between mt-0.5">
               <span className="text-[9px] text-slate-400">¥0</span>
               <span className="text-[9px] text-slate-400">¥10,000</span>

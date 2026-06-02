@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
+import { useAuth } from '../../hooks/useAuth';
 import UserLevelCard from '../../components/UserLevelCard';
 import { useSearchHistory } from '../../hooks/useSearchHistory';
 import { useBookmarks } from '../../hooks/useBookmarks';
@@ -106,6 +106,7 @@ function AchievementWall({ progress }: { progress: UserProgress | null }) {
    ============================================================ */
 export default function ProfilePage() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const { history, hasHistory, clearHistory, removeHistoryItem } = useSearchHistory();
   const { bookmarks, hasBookmarks, removeBookmark, getBookmarksByType } = useBookmarks();
   const [progress, setProgress] = useState<UserProgress | null>(null);

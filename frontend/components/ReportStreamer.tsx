@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import Link from 'next/link';
+import { useAuth } from '../hooks/useAuth';
 import { submitSearch, pollResult, isResponseComplete, apiUrl } from '../lib/api';
 import PriceReferenceCard from './PriceReferenceCard';
 import SourceStatsPanel from './SourceStatsPanel';
@@ -11,8 +12,6 @@ import VerifySearch from './VerifySearch';
 import CommerceBanner from './CommerceBanner';
 import MarkdownRenderer from './MarkdownRenderer';
 import { ProductStructuredData } from './ProductStructuredData';
-
-const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 // ============================================
 // Props
@@ -724,9 +723,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
   // SKU 型号选择器：当前选中的 SKU index
   const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
 
-  // 登录门禁（步骤9）：Clerk hydration 安全
-  const [clerkMounted, setClerkMounted] = useState(false);
-  useEffect(() => { setClerkMounted(true); }, []);
+  // 登录门禁（步骤9）：自定义认证
+  const { isAuthenticated } = useAuth();
 
   // ===== 流中断优雅降级：追踪是否已收到部分数据 =====
   const hasPartialContentRef = useRef(false);
@@ -1090,56 +1088,38 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
         <DisputeLabels flaws={flaws} />
 
         {/* 分享海报 & 导出报告（步骤9：登录门控） */}
-        {hasScore && flaws.length > 0 && clerkMounted && HAS_CLERK && (
+        {hasScore && flaws.length > 0 && (
           <div className="flex justify-end gap-2">
             {/* 导出报告按钮 */}
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-green-300 hover:text-green-600 hover:shadow-md"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  导出报告
-                </button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-green-300 hover:text-green-600 hover:shadow-md"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-                导出报告
-              </button>
-            </SignedIn>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-green-300 hover:text-green-600 hover:shadow-md"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              导出报告
+            </button>
             {/* 分享海报按钮 */}
-            <SignedIn>
+            {isAuthenticated ? (
               <SharePoster
                 productName={object.productName ?? query}
                 score={object.score!}
                 flaws={flaws}
                 query={query}
               />
-            </SignedIn>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                  </svg>
-                  分享报告
-                </button>
-              </SignInButton>
-            </SignedOut>
+            ) : (
+              <Link
+                href="/sign-in"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                </svg>
+                分享报告
+              </Link>
+            )}
           </div>
         )}
 

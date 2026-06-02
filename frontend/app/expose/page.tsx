@@ -1,12 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth, SignInButton } from '@clerk/clerk-react';
 import Link from 'next/link';
-
-// ============================================
-// 类型定义
-// ============================================
+import { useAuth } from '../../hooks/useAuth';
 interface ExposePost {
   id: number;
   productName: string;
@@ -28,8 +24,6 @@ interface ApiErrorBody {
 import { apiUrl } from '../../lib/api';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
-const CLERK_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-const HAS_CLERK = !!CLERK_KEY;
 
 // ============================================
 // 格式化时间
@@ -141,17 +135,9 @@ function ExposeForm({
         </div>
         <div className="text-center py-4">
           <p className="mb-3 text-sm text-slate-500">登录后方可提交曝光</p>
-          {HAS_CLERK ? (
-            <SignInButton mode="modal">
-              <button className="rounded-full bg-gradient-to-r from-red-500 to-rose-500 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:from-red-600 hover:to-rose-600 hover:shadow-md">
-                登录 / 注册
-              </button>
-            </SignInButton>
-          ) : (
-            <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-400">
-              认证服务未配置，登录功能暂不可用
-            </div>
-          )}
+          <Link href="/sign-in" className="inline-block rounded-full bg-gradient-to-r from-red-500 to-rose-500 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:from-red-600 hover:to-rose-600 hover:shadow-md">
+            登录 / 注册
+          </Link>
         </div>
       </div>
     );
@@ -656,17 +642,14 @@ function ExposePageContent({
 // ExposePageWithAuth — 有 Clerk 时，调用真实 useAuth
 // ============================================
 function ExposePageWithAuth() {
-  const { isSignedIn, userId } = useAuth();
-  return <ExposePageContent isSignedIn={isSignedIn} userId={userId} />;
+  const { isAuthenticated, user } = useAuth();
+  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.username || null} />;
 }
 
 // ============================================
-// 主组件
+// 主组件 — 使用自定义认证
 // ============================================
 export default function ExposePage() {
-  // 无 Clerk Key → 跳过 useAuth，传入降级值
-  if (!HAS_CLERK) {
-    return <ExposePageContent isSignedIn={false} userId={null} />;
-  }
-  return <ExposePageWithAuth />;
+  const { isAuthenticated, user } = useAuth();
+  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.username || null} />;
 }

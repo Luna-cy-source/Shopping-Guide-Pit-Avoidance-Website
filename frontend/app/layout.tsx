@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import ClerkProviderWrapper from '../components/ClerkProviderWrapper';
+import AuthProviderWrapper from '../components/ClerkProviderWrapper';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import AiMascot from '../components/AiMascot';
@@ -28,13 +28,13 @@ export default function RootLayout({
         {/* 弥散渐变氛围光背景 */}
         <div className="bg-ambient" aria-hidden="true" />
 
-        <ClerkProviderWrapper>
+        <AuthProviderWrapper>
           <Header />
           <div className="relative z-[1] flex flex-1 flex-col">{children}</div>
           <Footer />
           {/* 全局 AI 小探员 */}
           <AiMascot />
-        </ClerkProviderWrapper>
+        </AuthProviderWrapper>
       </body>
     </html>
   );

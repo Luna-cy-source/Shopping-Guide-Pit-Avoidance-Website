@@ -1,26 +1,12 @@
 'use client';
 
-import { ClerkProvider } from '@clerk/clerk-react';
-import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { AuthProvider } from '../hooks/useAuth';
 
-const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
-
-export default function ClerkProviderWrapper({ children }: { children: ReactNode }) {
-  const router = useRouter();
-
-  // 构建时没有 publishableKey → 跳过 Clerk，纯静态渲染
-  if (!PUBLISHABLE_KEY) {
-    return <>{children}</>;
-  }
-
-  return (
-    <ClerkProvider
-      publishableKey={PUBLISHABLE_KEY}
-      routerPush={(to) => router.push(to)}
-      routerReplace={(to) => router.replace(to)}
-    >
-      {children}
-    </ClerkProvider>
-  );
+/**
+ * 认证 Provider — 替代原 ClerkProviderWrapper
+ * 使用自定义 localStorage 认证系统，不依赖第三方服务
+ */
+export default function AuthProviderWrapper({ children }: { children: ReactNode }) {
+  return <AuthProvider>{children}</AuthProvider>;
 }

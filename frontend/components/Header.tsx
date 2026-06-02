@@ -3,13 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
-
-const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+import { useAuth } from '../hooks/useAuth';
 
 // =====================================================
 // 全局顶部导航栏 — 极简实验室风格
-// Logo + 三个功能 Tab + Clerk 用户区
+// Logo + 三个功能 Tab + 自定义用户区
 // =====================================================
 
 interface NavTab {
@@ -29,10 +27,10 @@ const NAV_TABS: NavTab[] = [
 
 export default function Header() {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { isAuthenticated, user } = useAuth();
+
   useEffect(() => {
-    setMounted(true);
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -106,46 +104,31 @@ export default function Header() {
           })}
         </nav>
 
-        {/* ---- 右侧用户区 ---- */}
+        {/* ---- 右侧用户区（自定义认证）---- */}
         <div className="flex shrink-0 items-center gap-3">
-          {!mounted ? (
-            <div className="h-8 w-20 animate-pulse rounded-full border border-slate-100 bg-slate-100/80" />
-          ) : HAS_CLERK ? (
-            <>
-              {/* 个人主页入口 */}
-              <Link
-                href="/profile"
-                className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95"
-              >
-                👤 个人主页
-              </Link>
+          {/* 个人主页入口 */}
+          <Link
+            href="/profile"
+            className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95 sm:px-4"
+          >
+            👤 个人主页
+          </Link>
 
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95">
-                    登录 / 注册
-                  </button>
-                </SignInButton>
-              </SignedOut>
-
-              <SignedIn>
-                <UserButton
-                  afterSignOutUrl="/"
-                  appearance={{
-                    elements: {
-                      avatarBox: 'h-8 w-8 ring-2 ring-red-100 hover:ring-red-200 transition-all',
-                    },
-                  }}
-                />
-              </SignedIn>
-            </>
-          ) : (
-            /* 无 Clerk key - 仅保留个人主页入口 */
+          {/* 登录 / 用户头像 */}
+          {isAuthenticated && user ? (
             <Link
               href="/profile"
-              className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95"
+              className="flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 pl-1 pr-2.5 py-0.5 shadow-sm transition-all hover:border-purple-300 hover:shadow-md"
             >
-              👤 个人主页
+              <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs">{user.avatar}</span>
+              <span className="max-w-[60px] truncate text-[11px] font-medium text-purple-700">{user.nickname || user.username}</span>
+            </Link>
+          ) : (
+            <Link
+              href="/sign-in"
+              className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95 sm:px-4"
+            >
+              登录 / 注册
             </Link>
           )}
         </div>

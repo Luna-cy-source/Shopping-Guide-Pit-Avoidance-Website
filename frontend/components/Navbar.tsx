@@ -2,17 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
-
-const HAS_CLERK = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+import { useAuth } from '../hooks/useAuth';
 
 // =====================================================
-// 全局导航栏
-// 轻量级，透底融入页面，不抢夺视觉焦点
-// 使用 mounted 状态避免 Clerk 的 hydration mismatch
+// 全局导航栏 — 自定义认证版本
 // =====================================================
 export default function Navbar() {
   const [mounted, setMounted] = useState(false);
+  const { isAuthenticated, user } = useAuth();
   useEffect(() => setMounted(true), []);
 
   return (
@@ -40,28 +37,19 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {!mounted ? (
             <div className="h-8 w-20 rounded-full border border-gray-200 bg-gray-100/80" />
-          ) : HAS_CLERK ? (
-            <>
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm backdrop-blur transition-all hover:border-red-300 hover:text-red-500">
-                    登录 / 注册
-                  </button>
-                </SignInButton>
-              </SignedOut>
-
-              <SignedIn>
-                <UserButton
-                  afterSignOutUrl="/"
-                  appearance={{
-                    elements: {
-                      avatarBox: 'h-8 w-8 ring-2 ring-red-100',
-                    },
-                  }}
-                />
-              </SignedIn>
-            </>
-          ) : null}
+          ) : isAuthenticated && user ? (
+            <Link href="/profile" className="flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 pl-1 pr-2 py-0.5">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs">{user.avatar}</span>
+              <span className="text-[11px] font-medium text-purple-700">{user.nickname || user.username}</span>
+            </Link>
+          ) : (
+            <Link
+              href="/sign-in"
+              className="rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm backdrop-blur transition-all hover:border-red-300 hover:text-red-500"
+            >
+              登录 / 注册
+            </Link>
+          )}
         </div>
       </div>
     </header>
