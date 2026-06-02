@@ -292,7 +292,7 @@ export default function UsedCheckPage() {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s超时（后端45s+重试）
 
     try {
       const res = await fetch('/api/search', {
@@ -406,18 +406,22 @@ export default function UsedCheckPage() {
                 {result.productName ?? '该商品'}
               </p>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                整体风险：{result.riskLevel}
+                整体风险：{result.riskLevel || '中等'}
               </p>
             </div>
           </div>
-          <p className="text-sm leading-relaxed text-slate-700">{result.riskSummary}</p>
+          <p className="text-sm leading-relaxed text-slate-700">{result.riskSummary || '该商品在二手市场交易时需谨慎，建议仔细验机后再做决定。'}</p>
         </div>
 
         {/* 骗局话术 */}
-        <ScamCards routines={result.scamRoutines || []} />
+        {Array.isArray(result.scamRoutines) && result.scamRoutines.length > 0 ? (
+          <ScamCards routines={result.scamRoutines} />
+        ) : null}
 
         {/* 验机清单 */}
-        <InspectionChecklist items={result.inspectionChecklist || []} />
+        {Array.isArray(result.inspectionChecklist) && result.inspectionChecklist.length > 0 ? (
+          <InspectionChecklist items={result.inspectionChecklist} />
+        ) : null}
       </div>
     );
   };

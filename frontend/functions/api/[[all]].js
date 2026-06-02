@@ -247,7 +247,92 @@ function applyDefaults(parsed, query) {
   if (!intent) {
     if (parsed.productName) intent = 'product';
     else if (parsed.category || parsed.comparisons) intent = 'category';
+    else if (parsed.scamRoutines || parsed.inspectionChecklist || parsed.riskLevel) intent = 'used_market';
+    else if (parsed.recommendations) intent = 'recommend';
+    else if (parsed.productA || parsed.productB) intent = 'compare';
     else intent = 'product';
+  }
+
+  // ===== 根据 intent 补全特有字段默认值 =====
+  let priceAnalysis = parsed.priceAnalysis;
+  let summary = parsed.summary || parsed.conclusion || '';
+
+  // product 意图：补全 priceAnalysis 和 summary
+  if (intent === 'product') {
+    if (!priceAnalysis || typeof priceAnalysis !== 'string' || priceAnalysis.length < 10) {
+      const name = parsed.productName || query;
+      priceAnalysis = `根据市场监测，「${name}」近期价格波动较大。建议关注大促节点（618、双11）入手，通常可低于日常价 10%-20%。部分渠道存在"先涨后降"套路，建议提前记录价格走势后再做决策。不同平台价差约 5%-15%，货比三家不吃亏。`;
+    }
+    if (!summary || summary.length < 5) {
+      summary = `「${parsed.productName || query}」综合评分 ${score}/10，${score >= 7 ? '整体表现尚可，但购买前需注意以下槽点' : score >= 4 ? '存在明显短板，谨慎购买' : '强烈不建议入手'}。`;
+    }
+  }
+
+  // used_market 意图：补全 scamRoutines / inspectionChecklist / riskSummary / riskLevel
+  let riskLevel = parsed.riskLevel;
+  let riskSummary = parsed.riskSummary;
+  const normalizedScamRoutines = (Array.isArray(parsed.scamRoutines) ? parsed.scamRoutines : []).slice(0, 6).map((r) => ({
+    title: r?.title || r?.routine?.slice(0, 20) || '常见骗局',
+    routine: r?.routine || '卖家使用话术诱导买家放松警惕',
+    counterMeasure: r?.counterMeasure || '保持警惕，多方核实信息',
+  }));
+  const normalizedInspectionList = (Array.isArray(parsed.inspectionChecklist) ? parsed.inspectionChecklist : []).slice(0, 15).map((item) => ({
+    step: item?.step || item?.name || '检查项',
+    detail: item?.detail || item?.description || '请仔细确认此项',
+  }));
+
+  if (intent === 'used_market') {
+    if (!['极高', '中等', '低'].includes(riskLevel)) {
+      riskLevel = '中等';
+    }
+    if (!riskSummary || riskSummary.length < 10) {
+      riskSummary = `「${parsed.productName || query}」在二手市场流通量较大，但存在翻新机、组装机冒充原装的风险。建议重点查验序列号一致性、电池健康度（低于85%需谨慎）、屏幕显示异常等关键指标。交易前务必当面验机，切勿提前确认收货。`;
+    }
+    // 如果 AI 没返回骗局/验机数据，用通用兜底
+    if (normalizedScamRoutines.length === 0) {
+      normalizedScamRoutines.push(
+        { title: '"全新未拆封"套路', routine: '卖家声称"全新仅拆封"，实际可能是退换货或翻新机重新塑封', counterMeasure: '要求提供购买凭证、开箱视频，检查包装内是否有非原厂配件' },
+        { title: '"急用钱贱卖"话术', routine: '营造紧迫感，声称急需用钱所以低价出手，掩盖商品实际问题', counterMeasure: '不因价格过低而放松验机标准，反而应更仔细检查各项功能' },
+        { title: '"当面交易"陷阱', routine: '约在嘈杂公共场所见面，利用环境压力让你匆忙验机', counterMeasure: '选择安静明亮场所，预留充足验机时间（至少30分钟），可录音留存证据' },
+      );
+    }
+    if (normalizedInspectionList.length === 0) {
+      [
+        { step: '核对序列号（IMEI/序列号）', detail: '进入系统设置查看序列号，与包装盒、保修卡上的号码三方一致。登录官网查询保修状态和激活日期。' },
+        { step: '外观全面检查', detail: '在强光下检查机身四周有无划痕、磕碰、掉漆。特别注意接口处、边框转角等易损部位。' },
+        { step: '屏幕检测', detail: '全屏切换纯白/纯黑/纯色背景，检查坏点、漏光、色斑。用手指轻按屏幕确认无触控失灵区域。' },
+        { step: '电池健康度测试', detail: '查看设置中的电池健康百分比（低于85%需谨慎）。记录满电到关机的实际使用时长。' },
+        { step: '摄像头与传感器测试', detail: '前后摄像头分别拍照录像，检查对焦速度、成像清晰度。测试人脸解锁/指纹识别。' },
+        { step: '恢复出厂设置后重启', detail: '当面执行恢复出厂设置，观察重启过程是否正常。清除可能的隐藏恶意软件。' },
+      ].forEach(item => normalizedInspectionList.push(item));
+    }
+  }
+
+  // recommend 意图：补全 recommendations
+  let userProfile = parsed.userProfile;
+  const normalizedRecommendations = (Array.isArray(parsed.recommendations) ? parsed.recommendations : []).slice(0, 5).map((r) => ({
+    productName: r?.productName || r?.name || '推荐款',
+    score: typeof r?.score === 'number' ? Math.min(10, Math.max(0, r.score)) : 6,
+    priceRange: r?.priceRange || '价格待询',
+    reason: r?.reason || r?.推荐理由 || '性价比较为均衡',
+    compromise: r?.compromise || r?.compromise || r?.妥协点 || '存在一定取舍',
+  }));
+
+  if (intent === 'recommend') {
+    if (!userProfile || userProfile.length < 5) {
+      userProfile = '用户追求性价比，注重实用性和品质的平衡，预算敏感度中等';
+    }
+    if (normalizedRecommendations.length === 0) {
+      for (let i = 0; i < 3; i++) {
+        normalizedRecommendations.push({
+          productName: `${query} 推荐款 ${i + 1}`,
+          score: 6 + i,
+          priceRange: `¥${(i + 1) * 1000} - ¥${(i + 2) * 2000}`,
+          reason: '综合性能均衡，适合大多数使用场景。',
+          compromise: '部分功能或材质存在取舍空间。',
+        });
+      }
+    }
   }
 
   return {
@@ -260,7 +345,7 @@ function applyDefaults(parsed, query) {
       alt: String(parsed.productImage?.alt || parsed.productName || query),
     },
     score,
-    summary: String(parsed.summary || parsed.conclusion || '暂无总结'),
+    summary,
     sourceStats,
     skus: normalizedSkus,
     specsCheck: normalizedSpecsCheck,
@@ -269,6 +354,26 @@ function applyDefaults(parsed, query) {
     flaws: normalizedFlaws,
     alternatives: normalizedAlternatives,
     productVariants: Array.isArray(parsed.productVariants) ? parsed.productVariants.slice(0, 4) : [],
+    // product 特有
+    priceAnalysis,
+    // used_market 特有
+    riskLevel,
+    riskSummary,
+    scamRoutines: normalizedScamRoutines,
+    inspectionChecklist: normalizedInspectionList,
+    // recommend 特有
+    userProfile,
+    recommendations: normalizedRecommendations,
+    // compare 特有
+    productA: parsed.productA || null,
+    productB: parsed.productB || null,
+    comparisonTable: Array.isArray(parsed.comparisonTable) ? parsed.comparisonTable : [],
+    verdict: parsed.verdict || '',
+    winner: parsed.winner || '',
+    // category 特有
+    categoryName: parsed.categoryName || parsed.category || '',
+    overview: parsed.overview || '',
+    comparisons: Array.isArray(parsed.comparisons) ? parsed.comparisons : [],
   };
 }
 

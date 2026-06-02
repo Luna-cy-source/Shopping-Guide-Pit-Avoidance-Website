@@ -137,7 +137,7 @@ export default function ClinicPage() {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s 超时
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s超时（后端45s+重试）
 
     try {
       const res = await fetch('/api/search', {
@@ -292,6 +292,8 @@ export default function ClinicPage() {
     if (!result || result.intent !== 'recommend') return null;
 
     const recs = result.recommendations || [];
+    // 防御：如果 AI 返回的 recommendations 为空或格式异常，不渲染
+    if (!Array.isArray(recs) || recs.length === 0) return null;
     const profile = result.userProfile;
 
     return (
