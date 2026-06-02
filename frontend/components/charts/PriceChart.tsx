@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 
@@ -13,43 +13,45 @@ interface PricePoint {
 }
 
 interface PriceChartProps {
-  data?: PricePoint[];
+  data?: PricePoint[];      // 如果已有真实数据，直接传入
   title?: string;
-  basePrice?: number;  // 商品参考价，用于生成模拟走势
+  productName?: string;     // 商品名称，用于自动拉取真实历史价
 }
 
 // ============================================
-// 模拟数据：最近 12 个月价格走势（基于实际参考价）
+// 从后端获取真实价格走势
 // ============================================
-function generateMockData(basePrice: number = 1000): PricePoint[] {
-  // 使用固定种子保证同价格每次渲染一致
-  const seed = Math.floor(basePrice * 7) % 10000;
-  const pseudoRandom = (i: number) => {
-    const x = Math.sin(seed + i * 9301 + 49297) * 233280;
-    return x - Math.floor(x);
-  };
+async function fetchRealPriceHistory(productName: string): Promise<PricePoint[]> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const now = new Date();
-  const points: PricePoint[] = [];
+    const res = await fetch(
+      `/api/price-history?q=${encodeURIComponent(productName)}`,
+      { signal: controller.signal }
+    );
 
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    // 模拟波动：基于正弦曲线 + 固定种子噪声，±12%区间波动
-    const variance = (Math.sin(i * 0.6 + seed * 0.001) * 0.085 + (pseudoRandom(i) - 0.5) * 0.055) * basePrice;
-    points.push({
-      date: label,
-      price: Math.round(basePrice + variance),
-    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    if (json.success && Array.isArray(json.points) && json.points.length > 0) {
+      return json.points.map((p: any) => ({
+        date: p.date || '',
+        price: typeof p.price === 'number' ? Math.round(p.price) : 0,
+      })).filter((p: PricePoint) => p.price > 0 && p.date);
+    }
+    return [];
+  } catch {
+    return [];
   }
-
-  return points;
 }
 
 // ============================================
 // ECharts 配置
 // ============================================
-function buildOption(data: PricePoint[], title: string): EChartsOption {
+function buildOption(data: PricePoint[], title: string, isRealData: boolean): EChartsOption {
   return {
     tooltip: {
       trigger: 'axis',
@@ -89,7 +91,10 @@ function buildOption(data: PricePoint[], title: string): EChartsOption {
       axisLabel: {
         color: '#9ca3af',
         fontSize: 11,
-        formatter: (v: number) => `¥${(v / 1000).toFixed(1)}k`,
+        formatter: (v: number) => {
+          if (v >= 1000) return `¥${(v / 1000).toFixed(1)}k`;
+          return `¥${v}`;
+        },
       },
       splitLine: {
         lineStyle: { color: '#f3f4f6', type: 'dashed' },
@@ -103,14 +108,14 @@ function buildOption(data: PricePoint[], title: string): EChartsOption {
         data: data.map((d) => d.price),
         smooth: true,
         lineStyle: {
-          color: '#ef4444',
+          color: isRealData ? '#22c55e' : '#6b7280',  // 真实数据绿色，无数据灰色
           width: 2.5,
         },
         itemStyle: {
-          color: '#ef4444',
+          color: isRealData ? '#22c55e' : '#6b7280',
         },
         symbol: 'circle',
-        symbolSize: 6,
+        symbolSize: isRealData ? 6 : 4,
         areaStyle: {
           color: {
             type: 'linear',
@@ -119,8 +124,8 @@ function buildOption(data: PricePoint[], title: string): EChartsOption {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(239,68,68,0.12)' },
-              { offset: 1, color: 'rgba(239,68,68,0.01)' },
+              { offset: 0, color: isRealData ? 'rgba(34,197,94,0.12)' : 'rgba(107,114,128,0.06)' },
+              { offset: 1, color: isRealData ? 'rgba(34,197,94,0.01)' : 'rgba(107,114,128,0.0)' },
             ],
           },
         },
@@ -134,12 +139,7 @@ function buildOption(data: PricePoint[], title: string): EChartsOption {
             formatter: '均价 ¥{c}',
           },
           lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 },
-          data: [
-            {
-              type: 'average',
-              name: '均价',
-            },
-          ],
+          data: [{ type: 'average', name: '均价' }],
         },
       },
     ],
@@ -149,21 +149,65 @@ function buildOption(data: PricePoint[], title: string): EChartsOption {
 // ============================================
 // 组件
 // ============================================
-export function PriceChart({ data, title = '价格走势', basePrice }: PriceChartProps) {
+export function PriceChart({ data, title = '价格走势', productName }: PriceChartProps) {
+  const [realData, setRealData] = useState<PricePoint[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+
+  // 如果有外部传入的 data，直接使用
+  const hasExternalData = data && data.length > 0;
+
+  useEffect(() => {
+    // 外部已有真实数据，不需要再拉
+    if (hasExternalData) return;
+
+    // 尝试从后端拉真实价格走势
+    if (productName && productName.trim().length > 0) {
+      setIsLoading(true);
+      setFetchError(false);
+
+      fetchRealPriceHistory(productName)
+        .then((points) => {
+          setRealData(points.length > 0 ? points : null);
+          setFetchError(points.length === 0);
+        })
+        .catch(() => {
+          setRealData(null);
+          setFetchError(true);
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      setRealData(null);
+      setFetchError(true);
+    }
+  }, [productName, hasExternalData]);
+
+  // 决定使用的数据
   const chartData = useMemo(() => {
-    if (data && data.length > 0) return data;
-    // 兜底：基于商品参考价生成模拟数据（无参考价时用默认值）
-    return generateMockData(basePrice);
-  }, [data, basePrice]);
+    if (hasExternalData) return data!;
+    if (realData && realData.length > 0) return realData;
+    return [];
+  }, [hasExternalData, realData, data]);
 
-  // 判断是否为模拟数据
-  const isSimulated = (!data || data.length === 0);
+  const isRealData = !!(hasExternalData || (realData && realData.length > 0));
 
-  // 空数据占位
+  // 加载中骨架屏
+  if (isLoading) {
+    return (
+      <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-green-400 border-t-transparent" />
+          <p className="mt-3 text-sm text-gray-400">正在获取真实价格走势...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 无真实数据占位（不再显示模拟数据）
   if (chartData.length === 0) {
     return (
-      <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
-        <div className="text-center">
+      <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
+        <div className="text-center max-w-[300px]">
           <svg
             className="mx-auto h-8 w-8 text-gray-300"
             xmlns="http://www.w3.org/2000/svg"
@@ -178,7 +222,14 @@ export function PriceChart({ data, title = '价格走势', basePrice }: PriceCha
               d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
             />
           </svg>
-          <p className="mt-2 text-sm text-gray-400">暂无价格数据</p>
+          <p className="mt-2 text-sm font-medium text-gray-400">
+            暂无{productName ? `「${productName}」的` : ''}真实价格走势数据
+          </p>
+          <p className="mt-1 text-xs text-gray-300">
+            {fetchError
+              ? '价格数据源暂时不可用，请稍后刷新'
+              : '该商品暂无公开的历史价格记录'}
+          </p>
         </div>
       </div>
     );
@@ -187,13 +238,13 @@ export function PriceChart({ data, title = '价格走势', basePrice }: PriceCha
   return (
     <div className="relative">
       <ReactECharts
-        option={buildOption(chartData, title)}
+        option={buildOption(chartData, title, isRealData)}
         style={{ height: 280 }}
         opts={{ renderer: 'svg' }}
       />
-      {isSimulated && (
-        <div className="absolute right-3 top-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] text-amber-600">
-          ⚠️ 模拟走势仅供参考
+      {isRealData && (
+        <div className="absolute right-3 top-2 rounded-md bg-green-50 border border-green-200 px-2 py-0.5 text-[10px] text-green-600">
+          ✅ 来自真实平台数据
         </div>
       )}
     </div>

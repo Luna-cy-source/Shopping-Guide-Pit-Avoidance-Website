@@ -27,12 +27,12 @@ const FALLBACK_QUERIES = [
    ============================================================ */
 
 const HOT_PRODUCTS = [
-  { name: 'SK-II神仙水', category: '护肤', trend: '+23%', hot: true, searches: '2.3w', theme: 'rose', gradient: 'from-rose-50 via-pink-50 to-rose-50', iconBg: 'bg-gradient-to-br from-rose-100 to-pink-200', iconText: 'text-rose-600', bar: 'bg-rose-400', glow: 'group-hover:shadow-rose-100' },
-  { name: '大疆Mini 4 Pro', category: '数码', trend: '+15%', hot: true, searches: '1.8w', theme: 'amber', gradient: 'from-amber-50 via-yellow-50 to-amber-50', iconBg: 'bg-gradient-to-br from-amber-100 to-yellow-200', iconText: 'text-amber-600', bar: 'bg-amber-400', glow: 'group-hover:shadow-amber-100' },
-  { name: '戴尔XPS 15', category: '笔记本', trend: '+8%', hot: false, searches: '9.2k', theme: 'sky', gradient: 'from-sky-50 via-blue-50 to-sky-50', iconBg: 'bg-gradient-to-br from-sky-100 to-blue-200', iconText: 'text-sky-600', bar: 'bg-sky-400', glow: 'group-hover:shadow-sky-100' },
-  { name: 'iPhone 17 Pro Max', category: '手机', trend: '+42%', hot: true, searches: '4.1w', theme: 'violet', gradient: 'from-violet-50 via-purple-50 to-violet-50', iconBg: 'bg-gradient-to-br from-violet-100 to-purple-200', iconText: 'text-violet-600', bar: 'bg-violet-400', glow: 'group-hover:shadow-violet-100' },
-  { name: '戴森V16', category: '家电', trend: '+12%', hot: false, searches: '1.1w', theme: 'emerald', gradient: 'from-emerald-50 via-teal-50 to-emerald-50', iconBg: 'bg-gradient-to-br from-emerald-100 to-teal-200', iconText: 'text-emerald-600', bar: 'bg-emerald-400', glow: 'group-hover:shadow-emerald-100' },
-  { name: '花西子空气蜜粉', category: '美妆', trend: '+18%', hot: true, searches: '1.5w', theme: 'fuchsia', gradient: 'from-fuchsia-50 via-pink-50 to-fuchsia-50', iconBg: 'bg-gradient-to-br from-fuchsia-100 to-pink-200', iconText: 'text-fuchsia-600', bar: 'bg-fuchsia-400', glow: 'group-hover:shadow-fuchsia-100' },
+  { name: 'SK-II神仙水', category: '护肤', tag: '热', theme: 'rose', gradient: 'from-rose-50 via-pink-50 to-rose-50', iconBg: 'bg-gradient-to-br from-rose-100 to-pink-200', iconText: 'text-rose-600', glow: 'group-hover:shadow-rose-100' },
+  { name: '大疆Mini 4 Pro', category: '数码', tag: '热', theme: 'amber', gradient: 'from-amber-50 via-yellow-50 to-amber-50', iconBg: 'bg-gradient-to-br from-amber-100 to-yellow-200', iconText: 'text-amber-600', glow: 'group-hover:shadow-amber-100' },
+  { name: '戴尔XPS 15', category: '笔记本', tag: '热', theme: 'sky', gradient: 'from-sky-50 via-blue-50 to-sky-50', iconBg: 'bg-gradient-to-br from-sky-100 to-blue-200', iconText: 'text-sky-600', glow: 'group-hover:shadow-sky-100' },
+  { name: 'iPhone 17 Pro Max', category: '手机', tag: '新', theme: 'violet', gradient: 'from-violet-50 via-purple-50 to-violet-50', iconBg: 'bg-gradient-to-br from-violet-100 to-purple-200', iconText: 'text-violet-600', glow: 'group-hover:shadow-violet-100' },
+  { name: '戴森V16', category: '家电', tag: '热', theme: 'emerald', gradient: 'from-emerald-50 via-teal-50 to-emerald-50', iconBg: 'bg-gradient-to-br from-emerald-100 to-teal-200', iconText: 'text-emerald-600', glow: 'group-hover:shadow-emerald-100' },
+  { name: '花西子空气蜜粉', category: '美妆', tag: '热', theme: 'fuchsia', gradient: 'from-fuchsia-50 via-pink-50 to-fuchsia-50', iconBg: 'bg-gradient-to-br from-fuchsia-100 to-pink-200', iconText: 'text-fuchsia-600', glow: 'group-hover:shadow-fuchsia-100' },
 ];
 
 /* 类别图标 SVG */
@@ -432,7 +432,7 @@ export default function HomePage() {
                 style={{ animationDelay: `${idx * 80}ms` }}
               >
                 {/* 热度脉冲环 */}
-                {product.hot && (
+                {product.tag && (
                   <>
                     <span className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-red-500/20 animate-pulse-ring" />
                     <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-orange-500 text-[10px] text-white shadow-md z-10">
@@ -459,30 +459,10 @@ export default function HomePage() {
                 {/* 分类标签 */}
                 <span className="mt-1 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-medium text-slate-500 backdrop-blur-sm border border-slate-100/60">
                   {product.category}
+                  {product.tag && (
+                    <span className="ml-1 text-[9px] font-bold text-orange-500">{product.tag}</span>
+                  )}
                 </span>
-
-                {/* 趋势条 */}
-                <div className="mt-3 w-full">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-semibold text-slate-500">热度</span>
-                    <span className="text-[10px] font-bold text-slate-700">{product.searches}</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/60">
-                    <div
-                      className={`h-full rounded-full ${product.bar} transition-all duration-1000 ease-out`}
-                      style={{ width: `${Math.min(parseInt(product.trend) * 2 + 20, 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* 涨幅 */}
-                <div className="mt-2 flex items-center gap-0.5">
-                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-red-500" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-                    <polyline points="17 6 23 6 23 12"/>
-                  </svg>
-                  <span className="text-[11px] font-bold text-red-500">{product.trend}</span>
-                </div>
               </button>
             ))
           )}

@@ -477,53 +477,33 @@ function ScorePlaceholder() {
 // ============================================
 // 本地离线报告生成器：AI 服务不可用时自动降级
 // ============================================
+/**
+ * 本地离线报告生成器（AI 不可用时的备用方案）
+ * 不再编造虚假价格和数据，诚实告知用户数据暂不可用
+ */
 function generateLocalReport(query: string) {
   const name = query.trim();
-  const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const seed = (hash % 100) + 1;
-  const score = 4 + (seed % 5);
 
   return {
     intent: 'product' as const,
     productName: name,
-    score,
-    priceAnalysis: `根据市场监测，「${name}」近期价格波动较大。建议关注大促节点（618、双11）入手，通常可低于日常价 10%-20%。部分渠道存在"先涨后降"套路，建议提前 30 天记录价格走势再做决策。`,
+    score: 0, // 0 表示无评分
+    priceAnalysis: `⚠️ AI 分析服务暂时不可用，无法获取「${name}」的价格分析。请稍后重试，或直接访问京东/淘宝搜索该商品查看实时价格。`,
     imageUrl: '',
     productImage: { url: 'null', alt: name },
-    sourceStats: { sampleSize: 1200 + seed * 10, platforms: ['京东', '淘宝', '小红书', 'B站'] },
-    skus: [
-      { name: '标准版', priceStr: `约¥${(seed * 50 + 2000).toLocaleString()}`, specs: '主流配置，适合大多数用户', specificFlaw: '基础版本在部分场景下性能可能受限' },
-      { name: '高配版', priceStr: `约¥${(seed * 80 + 3500).toLocaleString()}`, specs: '旗舰配置，性能拉满', specificFlaw: '溢价明显，性价比一般' },
-    ],
+    sourceStats: { sampleSize: 0, platforms: [], note: 'AI服务不可用，暂无数据来源' },
+    skus: [],
     visData: {
       flawRadar: {
-        '参数虚标': 3 + (seed % 4),
-        '品控不稳': 2 + (seed % 5),
-        '售后坑爹': 2 + (seed % 3),
-        '溢价噱头': 4 + (seed % 4),
-        '做工瑕疵': 3 + (seed % 3),
+        '数据暂缺': 0,
       },
     },
     flaws: [
-      { title: '营销话术过度包装', quote: '官方宣传强调"革命性突破"，实际体验提升有限', analysis: '厂商在宣发中使用了大量夸张形容词，如"颠覆""革命""秒杀竞品"等。实际对比前代产品，核心体验提升约 10%-15%，远未达到宣传口径。建议关注独立测评机构的实测数据，而非官方话术。' },
-      { title: '基础版本配置阉割明显', quote: '入门款存储/内存容量偏低，实际使用体验打折扣', analysis: '标准版为了压低起售价，在存储、内存或核心功能上做了明显阉割。多数用户在实际使用中发现容量不够用，被迫加钱上高配。建议购买前仔细核对 SKU 差异，算清"真实够用"的总成本。' },
-      { title: '配件/耗材隐性成本高', quote: '主机价格看似合理，但周边配件和耗材价格不菲', analysis: '部分品类的配件生态存在"主机便宜、配件贵"的套路。官方配件价格往往是第三方兼容品的 2-3 倍，且部分功能必须搭配官方配件才能使用。建议提前调研配件价格和第三方替代方案。' },
-      { title: '软件功能付费订阅化', quote: '部分核心功能需额外付费解锁或订阅', analysis: '越来越多厂商将硬件与软件服务捆绑，部分原本免费的功能转为订阅制。购买时需注意"一次性买断"和"持续付费"的真实总成本，避免陷入"买得起的硬件，用不起的服务"的困境。' },
+      { title: '数据暂不可用', quote: 'AI 分析服务当前未能返回结果', analysis: '请检查网络连接后刷新页面重试。如果问题持续，可能是 API 服务暂时波动，稍等几分钟再试。' },
     ],
-    alternatives: [
-      { productName: '同品类性价比之选', price: '低 20%-30%', advantage: '核心功能相近，价格更友好，适合预算敏感用户' },
-      { productName: '上代旗舰清仓款', price: '低 40%-50%', advantage: '性能差距不大，价格已降至冰点，性价比极高' },
-    ],
-    specsCheck: [
-      { specName: '续航/电池', officialClaim: '官方标称超长续航，满足全天使用', truth: '实验室理想环境下的数据，实际日常使用续航打 7-8 折' },
-      { specName: '材质/做工', officialClaim: '航空级材质，军工品质', truth: '中框或关键部位确实用料扎实，但部分非受力件为普通塑料' },
-      { specName: '防水防尘', officialClaim: '支持 IPX7 / IP68 等级防护', truth: '防护等级在实验室淡水环境中测试，海水、温泉等场景不保修' },
-    ],
-    priceReference: [
-      { platform: '京东' as const, price: seed * 50 + 2100 },
-      { platform: '淘宝' as const, price: seed * 50 + 1980 },
-      { platform: '拼多多' as const, price: seed * 50 + 1850 },
-    ],
+    alternatives: [],
+    specsCheck: [],
+    priceReference: [],
   };
 }
 
@@ -1192,8 +1172,8 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
               正在分析价格...
             </p>
           ) : (
-            <p className="text-sm leading-relaxed text-slate-600">
-              根据近期市场数据，「{object.productName || query}」建议关注大促节点（618、双11）入手，通常可低于日常价 10%-20%。不同平台价差约 5%-15%，购买前货比三家。
+            <p className="text-sm leading-relaxed text-slate-400">
+              暂无「{object.productName || query}」的价格分析数据。建议访问京东、淘宝等平台比对实时售价。
             </p>
           )}
         </section>
@@ -1222,29 +1202,7 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
             </svg>
             价格走势（近12个月）
           </h3>
-          <PriceChart basePrice={(() => {
-            // 多级价格提取：priceReference > SKU价格解析 > 评分估算
-            const refPrice = Array.isArray(object.priceReference) && object.priceReference.length > 0
-              ? object.priceReference.find((p: { price?: number }) => typeof p?.price === 'number')?.price
-              : undefined;
-            if (typeof refPrice === 'number' && refPrice > 0) return refPrice;
-
-            // 尝试从 SKU 价格字符串中解析数字（如 "¥1540" 或 "约¥1,200"）
-            const skus = (object as any).skus as Array<{ priceStr?: string }> | undefined;
-            if (skus && skus.length > 0) {
-              for (const sku of skus) {
-                const m = (sku.priceStr || '').match(/(\d[\d,]*)/);
-                if (m) {
-                  const parsed = parseInt(m[1].replace(/,/g, ''), 10);
-                  if (parsed > 0) return parsed;
-                }
-              }
-            }
-
-            // 基于评分的粗略估算（仅作为最后兜底）
-            const score = typeof object.score === 'number' ? object.score : 5;
-            return Math.max(100, score * 200);
-          })()} />
+          <PriceChart productName={object.productName || undefined} />
         </section>
 
         {/* 参数透视 — 在坑点列表上方，体现「扒皮」犀利感 */}

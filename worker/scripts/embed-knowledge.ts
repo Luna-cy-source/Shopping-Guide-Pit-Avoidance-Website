@@ -253,8 +253,13 @@ async function main() {
     );
   }
 
-  // 2. 读取测试 JSON
-  const jsonPath = path.resolve(__dirname, 'test-reviews.json');
+  // 2. 读取评价数据（优先使用真实数据，不存在时回退到测试数据）
+  const realPath = path.resolve(__dirname, 'real-reviews.json');
+  const testPath = path.resolve(__dirname, 'test-reviews.json');
+  const jsonPath = fs.existsSync(realPath) ? realPath : testPath;
+
+  const isRealData = jsonPath === realPath;
+  console.log(`\n📂 读取${isRealData ? '真实' : '测试'}数据文件: ${jsonPath}`);
 
   if (!fs.existsSync(jsonPath)) {
     console.error(`\n❌ 找不到测试数据文件: ${jsonPath}`);
