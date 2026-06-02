@@ -20,7 +20,7 @@ type ProductStatus = 'problem' | 'fixed' | 'removed';
 const STATUS_CONFIG: Record<ProductStatus, { label: string; emoji: string; bg: string; text: string; desc: string }> = {
   problem: { label: '问题中', emoji: '⚠️', bg: 'bg-red-50', text: 'text-red-600', desc: '该商品仍存在争议' },
   fixed:   { label: '已整改', emoji: '✅', bg: 'bg-emerald-50', text: 'text-emerald-600', desc: '品牌方已改善' },
-  removed: { label: '已下架', emoji: 'ὪB', bg: 'bg-slate-100', text: 'text-slate-500', desc: '已从主流平台下架' },
+  removed: { label: '已下架', emoji: '🚫', bg: 'bg-slate-100', text: 'text-slate-500', desc: '已从主流平台下架' },
 };
 
 export default function BlacklistPage() {
@@ -80,10 +80,10 @@ export default function BlacklistPage() {
   return (
     <div className="relative z-[1] flex min-h-[80vh] flex-col items-center px-4 pt-20 pb-16">
       <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-2xl bg-red-50 text-4xl shadow-[0_8px_30px_rgb(239,68,68,0.08)] ring-1 ring-red-10">
-        &#128200;
+        📊
       </div>
       <h1 className="mb-3 text-3xl font-bold tracking-tight text-slate-90">
-        智商税黑桦
+        智商税黑榜
       </h1>
       <p className="mb-2 max-w-md text-center text-sm leading-relaxed font-medium text-slate-500">
         基于真实用户踩坑数据，实时更新
@@ -94,7 +94,7 @@ export default function BlacklistPage() {
         <div className="mt-8 grid w-full max-w-2xl grid-cols-3 gap-3">
           <div className="rounded-2xl border border-red-100 bg-red-50/50 px-4 py-4 text-center">
             <p className="text-2xl font-bold text-red-500">{items.length}</p>
-            <p className="mt-0.5 text-[11px] font-medium text-red-400">本月上桦</p>
+            <p className="mt-0.5 text-[11px] font-medium text-red-400">本月上榜</p>
           </div>
           <div className="rounded-2xl border border-amber-100 bg-amber-50/50 px-4 py-4 text-center">
             <p className="text-2xl font-bold text-amber-600">{avgScore}</p>
@@ -211,7 +211,7 @@ export default function BlacklistPage() {
           ))}
 
           <p className="mt-2 text-center text-[11px] font-medium leading-relaxed text-slate-400">
-            本桬单由 AI 实验室生成
+            本榜单由 AI 实验室生成
           </p>
         </div>
       )}

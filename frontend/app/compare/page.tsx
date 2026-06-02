@@ -306,6 +306,7 @@ function localCompareEngine(a: string, b: string): CompareResult {
 export default function ComparePage() {
   const [productA, setProductA] = useState('');
   const [productB, setProductB] = useState('');
+  const [hotPoolIndex, setHotPoolIndex] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showExportPrompt, setShowExportPrompt] = useState(false);
   const [activeDimensions, setActiveDimensions] = useState<Set<string>>(new Set(['续航', '噪音', '价格', '品牌', '售后', '重量']));
@@ -551,37 +552,68 @@ export default function ComparePage() {
       )}
 
       {/* ===== 热门对比场景快捷入口 ===== */}
-      {!hasResult && !isLoading && !error && (
-        <div className="mt-10 w-full max-w-3xl">
-          <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            🔥 热门对比
-          </p>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              ['iPhone 16 Pro', '华为 Mate 70 Pro'],
-              ['索尼 WH-1000XM5', 'Bose QC Ultra'],
-              ['戴森 V15', '追觅 X40 Ultra'],
-              ['MacBook Air M3', '华为 MateBook X Pro'],
-              ['DJI Air 3', 'DJI Mini 4 Pro'],
-              ['小米 14 Ultra', 'vivo X100 Ultra'],
-            ].map(([a, b]) => (
+      {!hasResult && !isLoading && !error && (() => {
+        const HOT_POOLS: [string, string][][] = [
+          [
+            ['iPhone 16 Pro', '华为 Mate 70 Pro'],
+            ['索尼 WH-1000XM5', 'Bose QC Ultra'],
+            ['戴森 V15', '追觅 X40 Ultra'],
+            ['MacBook Air M3', '华为 MateBook X Pro'],
+            ['DJI Air 3', 'DJI Mini 4 Pro'],
+            ['小米 14 Ultra', 'vivo X100 Ultra'],
+          ],
+          [
+            ['AirPods Pro 2', '华为 FreeBuds Pro 3'],
+            ['Switch OLED', 'PS5 Slim'],
+            ['iPad Air M2', '小米平板 6S Pro'],
+            ['Apple Watch S10', '华为 Watch GT 4'],
+            ['索尼 A7M4', '佳能 R6 Mark II'],
+            ['极氪 007', '小米 SU7'],
+          ],
+          [
+            ['戴森 HD15', '松下 NA9H'],
+            ['SK-II神仙水', '雅诗兰黛小棕瓶'],
+            ['Lululemon Align', 'Nike Yoga Dri-FIT'],
+            ['北面羽绒服', '波司登极寒系列'],
+            ['Beats Studio Buds', '森海塞尔 Momentum'],
+            ['任天堂 Switch 2', 'Steam Deck OLED'],
+          ],
+        ];
+        const pool = HOT_POOLS[hotPoolIndex % HOT_POOLS.length];
+        return (
+          <div className="mt-10 w-full max-w-3xl">
+            <div className="mb-3 flex items-center justify-center gap-2">
+              <p className="text-center text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                🔥 热门对比
+              </p>
               <button
-                key={`${a}-${b}`}
                 type="button"
-                onClick={() => {
-                  setProductA(a);
-                  setProductB(b);
-                }}
-                className="card-premium-interactive group flex items-center justify-between gap-3 p-3.5 text-left"
+                onClick={() => setHotPoolIndex((i) => i + 1)}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-slate-400 transition-all hover:border-amber-300 hover:text-amber-500 active:scale-[0.96]"
               >
-                <span className="flex-1 text-xs font-medium text-slate-600 truncate">{a}</span>
-                <span className="shrink-0 text-amber-400 text-xs font-bold">VS</span>
-                <span className="flex-1 text-right text-xs font-medium text-slate-600 truncate">{b}</span>
+                🔄 换一批
               </button>
-            ))}
+            </div>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {pool.map(([a, b]) => (
+                <button
+                  key={`${a}-${b}`}
+                  type="button"
+                  onClick={() => {
+                    setProductA(a);
+                    setProductB(b);
+                  }}
+                  className="card-premium-interactive group flex items-center justify-between gap-3 p-3.5 text-left"
+                >
+                  <span className="flex-1 text-xs font-medium text-slate-600 truncate">{a}</span>
+                  <span className="shrink-0 text-amber-400 text-xs font-bold">VS</span>
+                  <span className="flex-1 text-right text-xs font-medium text-slate-600 truncate">{b}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ===== 结果区 ===== */}
       <div ref={resultsRef} className="mt-10 w-full max-w-5xl">
