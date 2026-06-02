@@ -22,8 +22,72 @@ interface ClinicResult {
 }
 
 /* ============================================
-   辅助：根据评分返回色阶
+   预算档位配置（根据商品类型动态切换）
    ============================================ */
+interface BudgetPreset {
+  label: string;
+  value: number;
+  desc: string;
+}
+
+// 学生党 / 日用小物
+const BUDGET_STUDENT: BudgetPreset[] = [
+  { label: '¥30', value: 30, desc: '零食' },
+  { label: '¥50', value: 50, desc: '文具' },
+  { label: '¥100', value: 100, desc: '日用品' },
+  { label: '¥200', value: 200, desc: '入门' },
+  { label: '¥500', value: 500, desc: '日常' },
+  { label: '不限', value: 0, desc: '' },
+];
+
+// 数码电子
+const BUDGET_DIGITAL: BudgetPreset[] = [
+  { label: '¥100', value: 100, desc: '配件' },
+  { label: '¥300', value: 300, desc: '入门' },
+  { label: '¥800', value: 800, desc: '实用' },
+  { label: '¥1500', value: 1500, desc: '进阶' },
+  { label: '¥3000', value: 3000, desc: '品质' },
+  { label: '¥8000', value: 8000, desc: '旗舰' },
+];
+
+// 家电 / 大件
+const BUDGET_HOME: BudgetPreset[] = [
+  { label: '¥100', value: 100, desc: '小家电' },
+  { label: '¥300', value: 300, desc: '实用型' },
+  { label: '¥800', value: 800, desc: '品质' },
+  { label: '¥2000', value: 2000, desc: '高端' },
+  { label: '¥5000', value: 5000, desc: '旗舰' },
+  { label: '不限', value: 0, desc: '' },
+];
+
+// 礼品 / 美妆
+const BUDGET_GIFT: BudgetPreset[] = [
+  { label: '¥50', value: 50, desc: '小礼物' },
+  { label: '¥100', value: 100, desc: '心意' },
+  { label: '¥300', value: 300, desc: '精致' },
+  { label: '¥600', value: 600, desc: '体面' },
+  { label: '¥1500', value: 1500, desc: '奢华' },
+  { label: '不限', value: 0, desc: '' },
+];
+
+// 根据输入文本智能匹配预算档位方案
+function detectBudgetPresets(text: string): BudgetPreset[] {
+  const lower = text.toLowerCase();
+  // 数码电子类
+  if (/耳机|耳机|蓝牙|音箱|音响|键盘|鼠标|显示器|平板|手机|电脑|笔记本|微单|相机|充电宝|数据线|手柄|游戏机|switch|ps5|kindle|电子书|智能手表|手环|扫地机器人|无人机|运动相机|投影仪/i.test(text)) {
+    return BUDGET_DIGITAL;
+  }
+  // 家电大件
+  if (/吹风机|空气炸锅|微波炉|烤箱|洗衣机|冰箱|空调|风扇|加湿器|净化器|吸尘器|破壁机|豆浆机|电饭煲|热水壶|挂烫机|除湿机|取暖器|电磁炉|榨汁机|咖啡机|面包机|洗碗机|干衣机|饮水机|净水器|马桶盖|按摩椅|跑步机动感单车|椭圆机|划船机|哑铃|瑜伽垫|跳绳|泡沫轴|筋膜枪|体脂秤/i.test(lower)) {
+    return BUDGET_HOME;
+  }
+  // 礼品美妆
+  if (/礼物|生日|送.*妈|送.*爸|送.*女|送.*男|女朋友|男朋友|老公|老婆|闺蜜|同事|老师|长辈|父母|妈妈|爸爸|美妆|护肤|化妆品|口红|香水|面膜|精华|面霜|眼霜|防晒|粉底|散粉|眉笔|眼影|睫毛膏|唇釉|身体乳|护手霜|洗面奶|爽肤水|乳液|卸妆水|化妆棉|美甲|假发|饰品|项链|耳环|戒指|手表|包包|钱包|皮带|围巾|帽子|墨镜|领带|胸针|发夹|发箍|头绳|发带/i.test(lower)) {
+    return BUDGET_GIFT;
+  }
+  // 默认学生党档位（覆盖最广）
+  return BUDGET_STUDENT;
+}
 function scoreColor(score: number): { ring: string; bg: string; text: string; label: string } {
   if (score < 4) return { ring: '#ef4444', bg: '#fef2f2', text: '#dc2626', label: '慎入' };
   if (score < 7) return { ring: '#f59e0b', bg: '#fffbeb', text: '#d97706', label: '谨慎' };
@@ -113,8 +177,10 @@ function generateLocalClinicResult(query: string) {
 
 export default function ClinicPage() {
   const [description, setDescription] = useState('');
-  const [budget, setBudget] = useState(500);
+  const [budget, setBudget] = useState(50);
   const [submittedQuery, setSubmittedQuery] = useState('');
+  // 动态预算档位（根据输入内容自动切换）
+  const [budgetPresets, setBudgetPresets] = useState<BudgetPreset[]>(BUDGET_STUDENT);
 
   // 分析状态（直接 fetch + 状态管理，不再依赖 experimental_useObject）
   const [isLoading, setIsLoading] = useState(false);
@@ -288,6 +354,34 @@ export default function ClinicPage() {
     }
   }, [result]);
 
+  // ==================== 根据输入内容智能切换预算档位 ====================
+  useEffect(() => {
+    if (description.trim().length >= 2) {
+      const presets = detectBudgetPresets(description);
+      setBudgetPresets(presets);
+      // 如果当前预算不在新档位范围内，自动选中该方案第一个合理档位
+      const validValues = presets.filter(p => p.value > 0).map(p => p.value);
+      if (!validValues.includes(budget) && budget !== 0) {
+        const firstPreset = presets.find(p => p.value > 0);
+        if (firstPreset) setBudget(firstPreset.value);
+      }
+    }
+  }, [description]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ==================== 重试（清空结果重新开始）====================
+  const handleRetry = () => {
+    setResult(null);
+    setError(null);
+    setIsFallback(false);
+    setFollowUpStep(0);
+    setFollowUpAnswers([]);
+    setDynamicQuestions([]);
+    setDescription('');
+    setBudget(50);
+    setBudgetPresets(BUDGET_STUDENT);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // ==================== 渲染推荐结果 ====================
   const renderRecommendations = () => {
     if (!result || result.intent !== 'recommend') return null;
@@ -445,7 +539,8 @@ export default function ClinicPage() {
       {/* ===== 顶部导航：返回 + 收藏 ===== */}
       <div className="w-full max-w-4xl">
         <TopBar
-          backLabel="← 返回首页"
+          backLabel={hasResult ? '↻ 重试' : '← 返回首页'}
+          onBackAction={hasResult ? handleRetry : undefined}
           showBookmark={hasResult}
           bookmarkName={`选品推荐: ${description.slice(0, 30)}`}
           bookmarkUrl={`/clinic?q=${encodeURIComponent(description)}`}
@@ -483,7 +578,7 @@ export default function ClinicPage() {
             placeholder={
               hasResult
                 ? '试试换一种需求描述？'
-                : '描述你的需求...\n\n例如：\n- 预算 2000 以内，想要一个降噪好的无线耳机，主要通勤用\n- 想给家里老人买一台操作简单的空气炸锅，预算 300\n- 我是摄影新手，想买第一台微单，预算 8000 左右'
+                : '描述你的需求...\n\n例如：\n- 学生党，预算50以内想买个好用的充电宝\n- 想给女朋友买个100以内的生日礼物\n- 预算200以内，降噪耳机推荐，通勤用\n- 我是摄影新手，第一台微单预算3000左右'
             }
             rows={hasResult ? 3 : 5}
             maxLength={500}
@@ -501,16 +596,9 @@ export default function ClinicPage() {
               </div>
             </div>
 
-            {/* 预设预算档位按钮 */}
+            {/* 预设预算档位按钮（根据输入内容自动切换） */}
             <div className="mb-2.5 flex flex-wrap gap-1.5">
-              {[
-                { label: '不限', value: 0, desc: '学生党' },
-                { label: '¥200', value: 200, desc: '入门' },
-                { label: '¥500', value: 500, desc: '日常' },
-                { label: '¥1000', value: 1000, desc: '进阶' },
-                { label: '¥3000', value: 3000, desc: '品质' },
-                { label: '¥8000', value: 8000, desc: '高端' },
-              ].map((preset) => (
+              {budgetPresets.map((preset) => (
                 <button
                   key={preset.value}
                   type="button"
@@ -522,28 +610,38 @@ export default function ClinicPage() {
                   }`}
                 >
                   {preset.label}
-                  <span className={`ml-0.5 ${budget === preset.value ? 'text-purple-200' : 'text-slate-400'}`}>
-                    {preset.desc}
-                  </span>
+                  {preset.desc && (
+                    <span className={`ml-0.5 ${budget === preset.value ? 'text-purple-200' : 'text-slate-400'}`}>
+                      {preset.desc}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* 自定义滑条 */}
-            <input
-              type="range"
-              min={0}
-              max={10000}
-              step={100}
-              value={budget}
-              onChange={(e) => setBudget(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full appearance-none bg-slate-200 cursor-pointer"
-              style={{ accentColor: '#8b5cf6' }}
-            />
-            <div className="flex justify-between mt-0.5">
-              <span className="text-[9px] text-slate-400">¥0</span>
-              <span className="text-[9px] text-slate-400">¥10,000</span>
-            </div>
+            {/* 自定义滑条（范围随档位自适应） */}
+            {(() => {
+              const maxVal = Math.max(...budgetPresets.map(p => p.value), 200);
+              const sliderMax = Math.max(maxVal * 3, 500);
+              return (
+                <>
+                  <input
+                    type="range"
+                    min={0}
+                    max={sliderMax}
+                    step={Math.max(Math.floor(sliderMax / 50), 10)}
+                    value={budget}
+                    onChange={(e) => setBudget(Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full appearance-none bg-slate-200 cursor-pointer"
+                    style={{ accentColor: '#8b5cf6' }}
+                  />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[9px] text-slate-400">¥0</span>
+                    <span className="text-[9px] text-slate-400">¥{sliderMax.toLocaleString()}</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-50 bg-slate-50/50 px-4 py-2.5">
@@ -654,12 +752,12 @@ export default function ClinicPage() {
       {!hasResult && !isLoading && followUpStep === 0 && (
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           {[
-            '预算1500以内的降噪耳机',
-            '适合新手的入门微单',
-            '送给妈妈的生日礼物500以内',
-            '不伤发质的吹风机推荐',
-            '学生党性价比笔记本电脑',
-            '颜值高又好用的空气炸锅',
+            '学生党50以内充电宝',
+            '100以内生日礼物女生',
+            '预算200降噪耳机通勤',
+            '不伤发质吹风机推荐',
+            '3000内入门微单相机',
+            '高颜值空气炸锅500内',
           ].map((suggestion) => (
             <button
               key={suggestion}
