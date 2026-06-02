@@ -559,6 +559,8 @@ async function handleSearch(request) {
 
     const userPrompt = `用户的查询问题：${query}\n\n${realPriceContext}\n\n请按系统提示词要求深度分析。输出纯 JSON 格式，不要 Markdown 包裹。`;
 
+    const data = await callDeepSeek(query, userPrompt);
+
     return json({ jobId: queryHash, status: 'done', data });
   } catch (err) {
     console.error('[Search] 💥 异常:', err?.message || err);
