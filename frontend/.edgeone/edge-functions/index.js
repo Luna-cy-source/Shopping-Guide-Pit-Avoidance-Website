@@ -833,7 +833,7 @@ ${PRODUCT_SCHEMA}`;
       return json({ success: true, message: "\u53CD\u9988\u5DF2\u8BB0\u5F55" });
     }
 
-    // ======== GET /api/price — 多源实时比价（京东+苏宁+慢慢买） ========
+    // ======== GET /api/price — 多源实时比价（京东+淘宝+拼多多+苏宁+慢慢买） ========
     if (path === '/api/price' && method === 'GET') {
       var kw = (url.searchParams.get('keyword') || '').trim();
       if (!kw) return json({ error: 'missing keyword' }, 400);
@@ -841,64 +841,107 @@ ${PRODUCT_SCHEMA}`;
         var ekw = encodeURIComponent(kw);
         var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-        // --- 并行抓取多个来源 ---
-        var jdPromise = fetch('https://search.jd.com/Search?keyword=' + ekw + '&enc=utf-8', {
+        // --- 1. 京东搜索 ---
+        var jdP = fetch('https://search.jd.com/Search?keyword=' + ekw + '&enc=utf-8&psort=3', {
           headers: { 'User-Agent': UA, 'Accept': 'text/html', 'Accept-Language': 'zh-CN,zh;q=0.9' },
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(10000)
         }).then(async function(r) {
           if (!r.ok) return [];
-          var html = await r.text();
-          var prices = [], m;
-          // data-price 属性
+          var h = await r.text(); var ps = [], m;
+          // data-price 属性 (JD搜索页商品价格)
           var re = /data-price="([\d.]+)"/g;
-          while ((m = re.exec(html)) !== null) { var p = parseFloat(m[1]); if (p > 10) prices.push(p); }
-          // 兜底：¥ 文本
-          if (prices.length === 0) { var re2 = /\\u00a5\s*([\d,.]+)/g; while ((m = re2.exec(html)) !== null) { var p = parseFloat(m[1].replace(/,/g,'')); if (p > 10) prices.push(p); } }
-          if (prices.length > 0) { prices.sort(function(a,b){return a-b}); return [{ platform:'京东', price:prices[Math.floor(prices.length/2)], source:'jd_search' }]; }
+          while ((m = re.exec(h)) !== null) { var p = parseFloat(m[1]); if (p > 1) ps.push(p); }
+          // 兜底: ¥xxx 格式
+          if (ps.length === 0) { var r2 = /[\u00a5\uffe5]?\s*([\d,]+\.?\d*)/g; while ((m = r2.exec(h)) !== null) { var p = parseFloat(String(m[1]).replace(/,/g,'')); if (p >= 1 && p < 9999999) ps.push(p); } }
+          if (ps.length > 0) { ps.sort(function(a,b){return a-b}); return [{ platform:'\u4EAC\u4E1C', price:ps[Math.min(3,Math.floor(ps.length/2))], source:'jd_search' }]; }
           return [];
-        }).catch(function() { return []; });
+        }).catch(function(){return[];});
 
-        var snPromise = fetch('https://search.suning.com/' + ekw + '/', {
+        // --- 2. 淘宝搜索 API ---
+        var tbP = fetch('https://s.taobao.com/search?q=' + ekw + '&sort=sale-desc', {
+          headers: { 'User-Agent': UA, 'Accept': '*/*', 'Referer': 'https://www.taobao.com/', 'X-Requested-With': 'XMLHttpRequest' },
+          signal: AbortSignal.timeout(10000)
+        }).then(async function(r) {
+          if (!r.ok) return [];
+          try { var d = await r.json(); } catch(e) { return []; }
+          var ps = [];
+          var items = (d && d.apiItemViewList) || (d && d.items) || [];
+          if (Array.isArray(items)) {
+            for (var i = 0; i < items.length && i < 20; i++) {
+              var p = parseFloat(items[i].price || items[i].view_price || items[i].rawPrice || '0');
+              if (p >= 1) ps.push(p);
+            }
+          }
+          if (ps.length > 0) { ps.sort(function(a,b){return a-b}); return [{ platform:'\u6DD8\u5B9D', price:ps[Math.min(3,Math.floor(ps.length/2))], source:'taobao_api' }]; }
+          return [];
+        }).catch(function(){return[];});
+
+        // --- 3. 拼多多移动端搜索 ---
+        var pddP = fetch('https://mobile.yangkeduo.com/proxy/api/search/goods?' + 'keyword=' + ekw + '&page=1&size=20&sort=sales',
+          { headers: { 'User-Agent': UA, 'Accept': '*/*', 'Referer': 'https://mobile.yangkeduo.com/' }, signal: AbortSignal.timeout(10000) }
+        ).then(async function(r) {
+          if (!r.ok) return [];
+          try { var d = await r.json(); } catch(e) { return []; }
+          var ps = [];
+          var items = (d && d.goods_list) || (d && d.result) || (d && d.data) || [];
+          if (Array.isArray(items)) {
+            for (var i = 0; i < items.length && i < 20; i++) {
+              var p = parseFloat(items[i].group_price || items[i].price_min || items[i].normal_price || items[i].min_normal_price || '0');
+              if (p >= 1) ps.push(p);
+            }
+          }
+          if (ps.length > 0) { ps.sort(function(a,b){return a-b}); return [{ platform:'\u62FC\u591A\u5914', price:ps[0], source:'pdd_mobile' }]; }
+          return [];
+        }).catch(function(){return[];});
+
+        // --- 4. 苏宁搜索 ---
+        var snP = fetch('https://search.suning.com/' + ekw + '/', {
           headers: { 'User-Agent': UA },
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(10000)
         }).then(async function(r) {
           if (!r.ok) return [];
-          var html = await r.text();
-          var prices = [], m;
+          var h = await r.text(); var ps = [], m;
           var re = /"price"\s*:\s*"([\d.]+)"/g;
-          while ((m = re.exec(html)) !== null) { var p = parseFloat(m[1]); if (p > 10) prices.push(p); }
-          if (prices.length > 0) { var avg = Math.round(prices.reduce(function(a,b){return a+b},0)/prices.length); return [{ platform:'苏宁', price:avg, source:'suning_search' }]; }
+          while ((m = re.exec(h)) !== null) { var p = parseFloat(m[1]); if (p > 1) ps.push(p); }
+          if (ps.length > 0) { return [{ platform:'\u82CF\u5B81', price:Math.round(ps.reduce(function(a,b){return a+b},0)/ps.length), source:'suning' }]; }
           return [];
-        }).catch(function() { return []; });
+        }).catch(function(){return[];});
 
-        var mmPromise = fetch('https://search.manmanbuy.com/search?q=' + ekw, {
+        // --- 5. 慢慢买聚合 ---
+        var mmP = fetch('https://search.manmanbuy.com/search?q=' + ekw, {
           headers: { 'User-Agent': UA, 'Accept': 'text/html' },
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(10000)
         }).then(async function(r) {
           if (!r.ok) return [];
-          var html = await r.text();
-          var results = [], m;
-          // 提取价格
-          var prices = [], platRe = /(京东|淘宝|天猫|拼多多|苏宁)/g, plats = [];
-          var priceRe = /<span[^>]*class="[^"]*price[^"]*"[^>]*>\\u00a5?([\d,.]+)<\/span>/gi;
-          while ((m = priceRe.exec(html)) !== null) { var p = parseFloat(m[1].replace(/,/g,'')); if (p > 0) prices.push(p); }
-          while ((m = platRe.exec(html)) !== null) plats.push(m[1]);
-          var up = [...new Set(prices)].slice(0,3), upl = [...new Set(plats)];
-          for (var i = 0; i < up.length; i++) results.push({ platform: upl[i]||['淘宝','拼多多','天猫'][i]||'\u7535\u5546\u5E73\u53F0', price: up[i], source:'manmanbuy' });
-          return results;
-        }).catch(function() { return []; });
+          var h = await r.text();
+          var res = []; var ps = [], plats = [], m;
+          var pr = /<span[^>]*class="[^"]*price[^"]*"[^>]*>(?:[\u00a5\uffe5])?([\d,.]+)<\/span>/gi;
+          while ((m = pr.exec(h)) !== null) { var p = parseFloat(String(m[1]).replace(/,/g,'')); if (p > 0) ps.push(p); }
+          var pl = /(\u4EAC\u4E1C|\u6DD8\u5B9D|\u5929\u732B|\u62FC\u591A\u5914|\u82CF\u5B81|\u7F51\u6613)/g;
+          while ((m = pl.exec(h)) !== null) plats.push(m[1]);
+          var up = [...new Set(ps)].slice(0,3), upl = [...new Set(plats)];
+          var defPlats = ['\u5929\u732B','\u7F51\u6613','\u4F69\u4F69'];
+          for (var i = 0; i < up.length; i++) res.push({ platform: upl[i]||defPlats[i]||'\u5176\u4ED6', price: up[i], source:'manmanbuy' });
+          return res;
+        }).catch(function(){return[];});
 
-        var all = await Promise.all([jdPromise, snPromise, mmPromise]);
+        var all = await Promise.allSettled([jdP, tbP, pddP, snP, mmP]);
         var merged = [];
-        for (var ai = 0; ai < all.length; ai++) { for (var j = 0; j < all[ai].length; j++) merged.push(all[ai][j]); }
+        for (var si = 0; si < all.length; si++) { var s = all[si]; if (s.status === 'fulfilled' && Array.isArray(s.value)) { for (var k = 0; k < s.value.length; k++) merged.push(s.value[k]); } }
 
         if (merged.length > 0) {
           merged.sort(function(a,b){return a.price-b.price});
-          return json({ keyword: kw, source: 'multi', items: merged, bestPrice: merged[0].price, bestPlatform: merged[0].platform, updatedAt: new Date().toISOString() });
+          // 去重：同平台只保留最低价
+          var seen = {}; var uniq = [];
+          for (var ui = 0; ui < merged.length; ui++) {
+            var item = merged[ui];
+            if (!seen[item.platform]) { seen[item.platform] = true; uniq.push(item); }
+          }
+          return json({ keyword: kw, source: 'multi', items: uniq.length > 0 ? uniq : merged.slice(0,5), bestPrice: merged[0].price, bestPlatform: merged[0].platform, totalFound: merged.length, updatedAt: new Date().toISOString() });
         }
-        return json({ keyword: kw, source: 'none', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\u4EF7\u683C' });
-      } catch(e3) {
-        return json({ keyword: kw, source: 'error', items: [], error: e3.message }, 503);
+        return json({ keyword: kw, source: 'none', items: [], updatedAt: new Date().toISOString(), message: '\u6682\u65E0\u5B9E\u65F6\4EF7\683C' });
+      } catch(ex) {
+        return json({ keyword: kw, source: 'error', items: [], error: ex.message }, 503);
       }
     }
 
