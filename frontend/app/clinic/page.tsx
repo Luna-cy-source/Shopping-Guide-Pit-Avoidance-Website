@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BookmarkButton, { TopBar } from '../../components/BookmarkButton';
 
@@ -197,6 +198,23 @@ export default function ClinicPage() {
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const searchParams = useSearchParams();
+
+  // ==================== 从 URL 参数自动触发分析（收藏"查看方案"跳转时）====================
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoTriggeredRef.current) return;
+    const qParam = searchParams.get('q');
+    if (qParam && qParam.trim().length >= 5) {
+      autoTriggeredRef.current = true;
+      const query = qParam.trim();
+      setDescription(query);
+      setSubmittedQuery(query);
+      // 延迟一点让 UI 先渲染
+      setTimeout(() => { doFinalSubmit(query, []); }, 300);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ==================== 核心分析函数 ====================
   const callAnalysisAPI = async (prompt: string): Promise<ClinicResult> => {
