@@ -143,9 +143,12 @@ function ReportContent({ data }: { data: any }) {
       )}
 
       {/* 数据来源 */}
-      {(data.sourceCount || data.sourceStats) && (
+      {(data.sourceStats?.sampleSize > 0) && (
         <div className="rounded-lg bg-blue-50/50 px-3 py-2 text-[10px] text-blue-600">
-          📊 数据来源：{data.sourceCount || Object.keys(data.sourceStats || {}).length || 'AI 分析'} 条参考评价
+          📊 数据来源：{data.sourceStats.sampleSize} 条参考评价
+          {Array.isArray(data.sourceStats.platforms) && data.sourceStats.platforms.length > 0 && (
+            <span className="ml-1 text-blue-400">（来自 {data.sourceStats.platforms.join('、')}）</span>
+          )}
         </div>
       )}
     </>
