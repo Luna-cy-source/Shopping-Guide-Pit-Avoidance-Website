@@ -14,7 +14,7 @@ import LevelUpPopup from './LevelUpPopup';
 import { type LevelConfig } from '../lib/userLevel';
 
 /* ============================================================
-   AI 小探员 — 轻量优化版
+   AI 小探员 — 轻量优化版（含本地知识库）
    ============================================================ */
 
 const BUBBLE_TEXTS = [
@@ -28,6 +28,121 @@ const BUBBLE_TEXTS = [
   '又有人踩坑了！',
 ];
 
+/* ---------- 本地知识库：热门商品避坑摘要 ---------- */
+interface KnowledgeEntry {
+  keywords: string[];
+  reply: string;
+}
+
+const KNOWLEDGE_BASE: KnowledgeEntry[] = [
+  {
+    keywords: ['sk-ii', 'sk2', 'skii', '神仙水', 'pitera'],
+    reply: `🔬 SK-II 神仙水 避坑指南：
+
+💰 市场价：¥900-1500（230ml）
+⭐ 综合评分：7.5/10
+
+✅ 确实有效的点：
+• 核心成分 Pitera（酵母发酵产物）有保湿+轻微剥脱效果
+• 油皮/混油皮用户反馈普遍较好
+• 长期使用肤质确实会变细腻
+
+⚠️ 但要注意：
+• 价格虚高 — 同类成分的平替很多（如 Olay 小白瓶系列）
+• 干皮/敏感皮可能不耐受（含多种防腐剂和香精）
+• 「28天奇迹」是营销话术 — 实际需要3-6个月
+• 假货泛滥，代购渠道风险高
+
+💡 建议：预算充足可以入，但别指望它「逆天改命」。更推荐先买30ml小样试用。
+
+→ 🔍 去「单品检测」看完整报告`,
+  },
+  {
+    keywords: ['戴森', 'dyson', '吹风机', 'supersonic'],
+    reply: `🔬 戴森吹风机 避坑指南：
+
+💰 官方价：¥2990-3290
+⭐ 综合评分：7/10
+
+✅ 技术亮点：
+• 中空马达设计确实耐用（数字马达寿命更长）
+• 智能温控不烫头皮是真的
+• 风量大、干发速度快
+
+⚠️ 但是：
+• ¥3000的价格 ≈ 10台普通高速吹风机
+• 「护发效果」被夸大 — 本质还是风筒，不能替代护发素
+• 配件生态是个坑（各种风嘴单独收费）
+• 新款和老款差异极小，不用追新
+
+💡 性价比替代方案：
+• 徕芬 / 直白 / 松下 — ¥300-800价位体验已经接近90%
+• 如果预算有限，¥200+的高速吹风机也够用
+
+→ 🥊 去「1v1对比」看看同价位PK`,
+  },
+  {
+    keywords: ['iphone', '苹果', '验机', '二手iphone', '二手苹果'],
+    reply: `📱 二手 iPhone 验机完整流程：
+
+✅ 第1步：外观检查
+• 查看边框是否有磕碰/掉漆
+• 充电口是否有异常磨损（频繁充电痕迹）
+• 屏幕显示是否有坏点/老化发黄
+
+✅ 第2步：序列号核对
+• 设置 → 通用 → 关于本机 → 序列号
+• 去 apple.com/cn/check-coverage 查询激活日期和保修状态
+• ⚠️ 激活日期 ≠ 购买日期，但如果未激活说明是新机
+
+✅ 第3步：硬件功能测试
+• Face ID / Touch ID 解锁是否流畅
+• 所有摄像头拍照/录像测试
+• WiFi / 蓝牙 / GPS 全部开启测试
+• 扬声器播放最大音量有无杂音
+• 充电口插拔是否松动
+
+✅ 第4步：系统检查
+• 设置 → 电池 → 电池健康度（低于85%要谨慎）
+• 检查「查找我的iPhone」是否关闭（必须关才能激活）
+• 恢复出厂设置后重新激活，确认无ID锁
+
+🚨 红色警报信号：
+• 价格远低于市场行情（如 iPhone 15 Pro 只要¥4000）
+• 无法提供购买凭证/包装盒
+• 序列号查询显示「更换过零件」或「非正品」
+
+→ 🔍 更多细节去「单品检测」输入具体型号`,
+  },
+  {
+    keywords: ['智商税', '套路', '新套路', '消费陷阱', '避坑', '最近'],
+    reply: `🔥 近期高发消费套路盘点：
+
+1️⃣ 「AI赋能」万物
+几乎所有产品都开始蹭 AI 概念 — AI梳子、AI枕头、AI袜子...99%都是加了简单传感器的普通商品，溢价200%-500%。
+
+2️⃣ 「成分党」营销反噬
+品牌疯狂堆砌成分表，但实际添加量可能只有百万分之一。看配方表比看广告靠谱100倍。
+
+3️⃣ 直播间「限时秒杀」剧本
+「只剩最后50单」— 其实库存几千件。用紧迫感逼你冲动消费。
+
+4️⃣ 「免费试用」钓鱼
+付邮费送试用装，然后自动开通会员扣费。仔细读条款！
+
+5️⃣ 「国货之光」情怀绑架
+打着国货旗号卖高价低质产品。支持国货≠无脑买单。
+
+6️⃣ 订阅制陷阱
+「首月¥9.9」后面每月¥49.9 自动续费。很多人忘了取消扣了大半年。
+
+💡 想查某个具体商品？直接告诉我名字，或者用上方 🔍单品检测 功能！
+
+→ 📉 去「黑榜」查看更多曝光案例`,
+  },
+];
+
+/* 快捷问题 */
 const QUICK_QUESTIONS = [
   'SK-II 神仙水是智商税吗？',
   '戴森吹风机值得买吗？',
@@ -193,6 +308,15 @@ export default function AiMascot() {
     });
   }, []);
 
+  /* ---------- 本地知识库匹配 ---------- */
+  const matchKnowledge = useCallback((query: string): KnowledgeEntry | null => {
+    const q = query.toLowerCase();
+    for (const entry of KNOWLEDGE_BASE) {
+      if (entry.keywords.some(kw => q.includes(kw))) return entry;
+    }
+    return null;
+  }, []);
+
   /* ---------- 发送消息 ---------- */
   const sendMessage = useCallback(async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
@@ -210,9 +334,22 @@ export default function AiMascot() {
       setLevelUpInfo({ level: lvl.level, title: lvl.title, emoji: lvl.emoji, minXP: 0, color: '', bgColor: '', ringColor: '', desc: '' });
     }
 
+    /* ---- 第1步：本地知识库命中 → 直接回复 ---- */
+    const kbMatch = matchKnowledge(text);
+    if (kbMatch) {
+      streamingTargetRef.current = kbMatch.reply;
+      await waitForTypewriter();
+      stopStreaming();
+      setMood('happy');
+      setMessages((prev) => [...prev, { role: 'bot', text: kbMatch.reply }]);
+      setTimeout(() => setMood('normal'), 4000);
+      return;
+    }
+
+    /* ---- 第2步：尝试后端流式接口 ---- */
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const res = await fetch(apiUrl('/api/search/stream'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,25 +395,46 @@ export default function AiMascot() {
       setMood('happy');
       setMessages((prev) => [
         ...prev,
-        { role: 'bot', text: fullText.trim() || '抱歉，暂时无法获取分析结果。' },
-        { role: 'bot', text: `💡 想查看「${text}」的完整深度报告？\n👇 试试上方快捷功能：🔍单品检测 🥊1v1对比 📉黑榜` },
+        { role: 'bot', text: fullText.trim() || getSmartFallback(text) },
+        { role: 'bot', text: `💡 想看更完整的深度报告？\n👇 用 🔍单品检测 或 🥊1v1对比` },
       ]);
       setTimeout(() => setMood('normal'), 3000);
 
     } catch (err) {
-      console.error('小探员 AI 请求失败:', err);
+      console.error('小探员请求失败:', err);
       stopStreaming();
       setMood('happy');
-      const replies = [
-        `收到「${text}」~ AI 客服正在接入，先去首页搜索查看深度报告吧！`,
-        `「${text}」讨论很火！去「单品检测」模块能看到详细报告。`,
-        `关于「${text}」已有不少用户讨论，去看看黑榜或对比功能吧~`,
-        `小探员正在分析「${text}」... 先用搜索功能，报告马上好！`,
-      ];
-      setMessages((prev) => [...prev, { role: 'bot', text: replies[Math.floor(Math.random() * replies.length)] }]);
+      setMessages((prev) => [...prev, { role: 'bot', text: getSmartFallback(text) }]);
       setTimeout(() => setMood('normal'), 3000);
     }
-  }, [input, startStreaming, stopStreaming, waitForTypewriter]);
+  }, [input, startStreaming, stopStreaming, waitForTypewriter, matchKnowledge]);
+
+  /* ---------- 智能兜底回复（根据问题类型生成） ---------- */
+  function getSmartFallback(query: string): string {
+    const q = query.toLowerCase();
+
+    // 值不值得买类
+    if (/值得|推荐|性价比|买不|好不好|怎么样|评价/.test(q)) {
+      return `关于「${query}」的问题我收到了！\n\n目前这个商品还没有收录进我的深度数据库 😅\n\n你可以试试：\n• 🔍 首页「单品检测」输入完整名称，我会调用 AI 引擎做全面分析\n• 🥊 如果在纠结多款产品，用「1v1对比」直接 PK\n• 📉 不确定的话先去「黑榜」看看有没有人踩过坑`;
+    }
+
+    // 怎么做/教程类
+    if (/怎么|如何|方法|技巧|教程|步骤|流程/.test(q)) {
+      return `好问题！「${query}」属于操作指南类型的内容。\n\n我的强项是帮你分析商品值不值得买、有没有消费套路 💡\n\n建议你去对应的功能模块看看：\n• 二手验机 → 「二手检测」功能有详细流程\n• 避坑攻略 → 「黑榜」「曝光」板块有很多真实案例\n• 如果是具体商品，直接告诉我名字，我用知识库帮你查`;
+    }
+
+    // 是什么/解释类
+    if (/什么是|啥是|什么叫|含义|意思|区别|和.*区别|vs|对比/.test(q)) {
+      return `「${query}」这个问题很有意思！\n\n不过目前我手头的资料还不够全面回答这个问题。😕\n\n💡 小建议：\n• 去 🔍「单品检测」搜一下相关关键词，可能有现成的对比分析\n• 或者用 🥊「1v1对比」把两样东西放在一起比一比\n• 实在不行就去 📉「黑榜」看看有没有相关的避坑信息`;
+    }
+
+    // 默认友好回复
+    const templates = [
+      `收到你的问题「${query}」！📝\n\n我正在努力扩充知识库，暂时还没有这方面的详细数据。\n\n不过你可以试试这些方式获取答案：\n• 👆 上方快捷入口一键跳转\n• 🔍 单品检测 — AI 深度分析任何商品\n• 🥊 1v1 对比 — 两款产品正面 PK`,
+      `「${query}」— 这个话题很值得深挖！⛏️\n\n目前我的离线知识库还没有覆盖到这块内容。不过别担心：\n\n✅ 首页的 🔍单品检测 功能支持任意商品查询，由 AI 引擎实时分析，结果比我的知识库更新更全面！`,
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
+  }
 
   const handleSubmit = useCallback(async (e?: FormEvent) => {
     e?.preventDefault();
