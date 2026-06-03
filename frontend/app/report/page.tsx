@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ReportStreamerWrapper from '../../components/ReportStreamerWrapper';
 import MiniSearch from '../../components/MiniSearch';
@@ -12,6 +12,7 @@ function ReportContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const rawQ = searchParams?.get('q') || '';
+  const [reportData, setReportData] = useState<any>(null);
 
   useEffect(() => {
     if (!rawQ) {
@@ -19,9 +20,7 @@ function ReportContent() {
     }
   }, [rawQ, router]);
 
-  if (!rawQ) {
-    return null;
-  }
+  if (!rawQ) return null;
 
   const decodedQuery = decodeURIComponent(rawQ);
   const reportPath = `/report?q=${encodeURIComponent(decodedQuery)}`;
@@ -62,6 +61,7 @@ function ReportContent() {
           <BookmarkButton
             productName={decodedQuery}
             reportPath={reportPath}
+            reportData={reportData}
           />
 
           {/* Mini 搜索表单 */}
@@ -86,7 +86,7 @@ function ReportContent() {
       </div>
 
         {/* 流式渲染组件 */}
-        <ReportStreamerWrapper query={decodedQuery} />
+        <ReportStreamerWrapper query={decodedQuery} onDataReady={setReportData} />
 
         {/* 避坑线索提交 */}
         <div className="mt-12 flex justify-center">

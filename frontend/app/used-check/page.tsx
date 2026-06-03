@@ -448,6 +448,7 @@ export default function UsedCheckPage() {
           bookmarkName={`二手防坑: ${result?.productName || description.slice(0, 30)}`}
           bookmarkUrl={`/used-check?q=${encodeURIComponent(description)}`}
           bookmarkType="used_check"
+          bookmarkData={result || undefined}
         />
       </div>
 

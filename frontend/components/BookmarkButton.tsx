@@ -13,6 +13,7 @@ interface BookmarkButtonProps {
   reportPath: string;     // 当前页面 URL 路径
   type?: BookmarkType;    // 收藏类型，默认 report
   compact?: boolean;      // 紧凑模式（小尺寸）
+  reportData?: any;       // 收藏时保存的完整报告数据
 }
 
 const TYPE_LABELS: Record<BookmarkType, { label: string; saved: string; hint: string }> = {
@@ -21,7 +22,7 @@ const TYPE_LABELS: Record<BookmarkType, { label: string; saved: string; hint: st
   clinic:   { label: '收藏推荐', saved: '已收藏',   hint: '收藏此推荐方案' },
 };
 
-export default function BookmarkButton({ productName, reportPath, type = 'report', compact }: BookmarkButtonProps) {
+export default function BookmarkButton({ productName, reportPath, type = 'report', compact, reportData }: BookmarkButtonProps) {
   const { isBookmarked, toggleBookmark, mounted } = useBookmarks();
   const [justSaved, setJustSaved] = useState(false);
   const bookmarked = mounted && isBookmarked(reportPath);
@@ -49,7 +50,7 @@ export default function BookmarkButton({ productName, reportPath, type = 'report
     <button
       type="button"
       onClick={() => {
-        toggleBookmark(reportPath, productName, type);
+        toggleBookmark(reportPath, productName, type, reportData);
         setJustSaved(true);
       }}
       className={`inline-flex items-center rounded-lg border font-medium transition-all active:scale-95 ${sizeClass} ${
@@ -88,6 +89,7 @@ interface TopBarProps {
   bookmarkName?: string;
   bookmarkUrl?: string;
   bookmarkType?: BookmarkType;
+  bookmarkData?: any;       // 收藏时保存的完整数据
 }
 
 export function TopBar({
@@ -97,6 +99,7 @@ export function TopBar({
   bookmarkName = '',
   bookmarkUrl = '',
   bookmarkType = 'report',
+  bookmarkData,
 }: TopBarProps) {
   return (
     <div className="flex items-center justify-between mb-6">
@@ -131,6 +134,7 @@ export function TopBar({
           reportPath={bookmarkUrl}
           type={bookmarkType}
           compact
+          reportData={bookmarkData}
         />
       )}
     </div>

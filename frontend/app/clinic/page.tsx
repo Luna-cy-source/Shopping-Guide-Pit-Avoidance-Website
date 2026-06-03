@@ -563,6 +563,7 @@ export default function ClinicPage() {
           bookmarkName={`选品推荐: ${description.slice(0, 30)}`}
           bookmarkUrl={`/clinic?q=${encodeURIComponent(description)}`}
           bookmarkType="clinic"
+          bookmarkData={result || undefined}
         />
       </div>
 

@@ -9,12 +9,13 @@ import { ReportStreamer } from './ReportStreamer';
 // ============================================
 interface ReportStreamerWrapperProps {
   query: string;
+  onDataReady?: (data: any) => void;
 }
 
-export default function ReportStreamerWrapper({ query }: ReportStreamerWrapperProps) {
+export default function ReportStreamerWrapper({ query, onDataReady }: ReportStreamerWrapperProps) {
   return (
     <ErrorBoundary query={query}>
-      <ReportStreamer query={query} />
+      <ReportStreamer query={query} onDataReady={onDataReady} />
     </ErrorBoundary>
   );
 }

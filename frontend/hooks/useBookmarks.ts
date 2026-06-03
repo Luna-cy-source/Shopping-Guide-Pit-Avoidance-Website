@@ -77,9 +77,9 @@ export function useBookmarks() {
   }, []);
 
   const toggleBookmark = useCallback(
-    (url: string, productName: string, type: BookmarkType = 'report') => {
+    (url: string, productName: string, type: BookmarkType = 'report', reportData?: any) => {
       if (isBookmarked(url)) removeBookmark(url);
-      else addBookmark(url, productName, type);
+      else addBookmark(url, productName, type, reportData);
     },
     [isBookmarked, addBookmark, removeBookmark]
   );

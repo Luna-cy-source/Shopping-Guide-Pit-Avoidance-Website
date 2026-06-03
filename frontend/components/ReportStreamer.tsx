@@ -19,6 +19,7 @@ import { ProductStructuredData } from './ProductStructuredData';
 // ============================================
 interface ReportStreamerProps {
   query: string;
+  onDataReady?: (data: any) => void;  // 报告数据就绪回调（用于收藏时保存完整数据）
 }
 
 // ============================================
@@ -510,7 +511,7 @@ function generateLocalReport(query: string) {
 // ============================================
 // 主组件：ReportStreamer
 // ============================================
-export function ReportStreamer({ query }: ReportStreamerProps) {
+export function ReportStreamer({ query, onDataReady }: ReportStreamerProps) {
   // ===== 自定义 fetch 状态（替代 experimental_useObject）=====
   const [aiObject, setAiObject] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -520,6 +521,13 @@ export function ReportStreamer({ query }: ReportStreamerProps) {
   const [realPriceItems, setRealPriceItems] = useState<any[] | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const reportContainerRef = useRef<HTMLDivElement>(null);
+
+  // ===== 报告数据就绪时通知父组件（用于收藏保存完整数据） =====
+  useEffect(() => {
+    if (aiObject && onDataReady) {
+      try { onDataReady(aiObject); } catch {}
+    }
+  }, [aiObject, onDataReady]);
 
   // ===== 获取慢慢买实时价格（AI 数据就绪后触发）=====
   useEffect(() => {

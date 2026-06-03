@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import UserLevelCard from '../../components/UserLevelCard';
 import { useSearchHistory } from '../../hooks/useSearchHistory';
-import { useBookmarks } from '../../hooks/useBookmarks';
+import { useBookmarks, type BookmarkItem } from '../../hooks/useBookmarks';
+import BookmarkDetailModal from '../../components/BookmarkDetailModal';
 import {
   getUserProgress,
   calcLevel,
@@ -109,6 +110,7 @@ export default function ProfilePage() {
   const { user, isAuthenticated } = useAuth();
   const { history, hasHistory, clearHistory, removeHistoryItem } = useSearchHistory();
   const { bookmarks, hasBookmarks, removeBookmark, getBookmarksByType } = useBookmarks();
+  const [viewingBookmark, setViewingBookmark] = useState<BookmarkItem | null>(null);
   const [progress, setProgress] = useState<UserProgress | null>(null);
 
   useEffect(() => {
@@ -260,8 +262,20 @@ export default function ProfilePage() {
                               key={item.url}
                               className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-all hover:border-amber-200 hover:bg-amber-50/30"
                             >
-                              {/* 选品推荐跳转到选品诊所页面 */}
-                              {item.type === 'clinic' ? (
+                              {/* 有缓存数据 → 弹窗展示 */}
+                              {item.reportData ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingBookmark(item)}
+                                  className="min-w-0 flex-1 text-left text-[13px] font-medium text-slate-700 transition-colors hover:text-emerald-700 truncate"
+                                >
+                                  {item.productName}
+                                  <span className="ml-1.5 text-[10px] font-normal opacity-0 group-hover:opacity-100 transition-opacity text-emerald-500">
+                                    ✅ 已保存
+                                  </span>
+                                </button>
+                              ) : item.type === 'clinic' ? (
+                                /* 选品推荐跳转 */
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -375,6 +389,15 @@ export default function ProfilePage() {
           </Link>
         </div>
       </main>
+
+      {/* 收藏详情弹窗 */}
+      {viewingBookmark && (
+        <BookmarkDetailModal
+          bookmark={viewingBookmark}
+          onClose={() => setViewingBookmark(null)}
+          onNavigate={(url) => { setViewingBookmark(null); router.push(url); }}
+        />
+      )}
     </div>
   );
 }
