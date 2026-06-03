@@ -128,8 +128,13 @@ function ReportContent({ data }: { data: any }) {
           <div className="space-y-2">
             {flaws.slice(0, 8).map((f: any, i: number) => (
               <div key={i} className="rounded-lg border border-red-50 bg-red-50/60 p-3">
-                {f.title && <p className="text-xs font-semibold text-red-700 mb-0.5">{f.title}</p>}
-                <p className="text-[11px] leading-relaxed text-red-600/80">{f.detail || f.description || f.content || JSON.stringify(f)}</p>
+                <p className="text-xs font-semibold text-red-700 mb-0.5">{f.title}</p>
+                {(f.analysis || f.detail || f.description) && (
+                  <p className="text-[11px] leading-relaxed text-red-600/80">{f.analysis || f.detail || f.description}</p>
+                )}
+                {f.quote && (
+                  <p className="text-[11px] leading-relaxed text-slate-500 mt-1 italic">「{f.quote}」</p>
+                )}
               </div>
             ))}
             {flaws.length > 8 && <p className="text-[10px] text-slate-400 text-center">... 还有 {flaws.length - 8} 条避坑点</p>}
