@@ -68,6 +68,108 @@ const levelLabel = (level: number): string => {
 };
 
 // ============================================
+// 内置示例数据（用于演示，无真实数据时展示）
+// ============================================
+const DEMO_EXPOSE_POSTS: ExposePost[] = [
+  {
+    id: 1,
+    productName: '某品牌「0糖0脂」气泡水',
+    pitTitle: '代糖陷阱：赤藓糖醇长期饮用影响肠道菌群',
+    description: '宣传0糖0脂但使用大量赤藓糖醇，最新研究表明过量摄入会导致腹胀、腹泻，并破坏肠道有益菌平衡。配料表排名第二位就是赤藓糖醇，含量并不低。',
+    voteCount: 128,
+    createdAt: Date.now() - 86400000 * 2,
+    status: 'verified',
+  },
+  {
+    id: 2,
+    productName: '网红「石墨烯」保暖内衣',
+    pitTitle: '概念炒作：所谓石墨烯只是添加了微量炭黑',
+    description: '售价299元，实际检测发现所谓的「石墨烯发热」成分含量不足0.1%，本质上就是普通聚酯纤维加了一点炭黑染色。发热效果与普通保暖内衣无差异。',
+    voteCount: 86,
+    createdAt: Date.now() - 86400000 * 5,
+    status: 'verified',
+  },
+  {
+    id: 3,
+    productName: '某平台「百亿补贴」品牌耳机',
+    pitTitle: '特供版缩水：同型号线上专供版用料减配',
+    description: '外观和正品一致，但拆解后发现内部电路板缩水严重——电容从原厂换成杂牌、线材铜含量下降30%、外壳塑料变薄。这是专门为补贴渠道生产的「特供版」。',
+    voteCount: 256,
+    createdAt: Date.now() - 86400000 * 7,
+    status: 'pending',
+  },
+  {
+    id: 4,
+    productName: '儿童「DHA藻油」软糖果',
+    pitTitle: '糖分超标：一颗含糖量相当于半罐可乐',
+    description: '主打补充DHA的儿童保健品，但每颗含糖高达4g。按推荐日服3颗计算，孩子光吃这个就摄入12g游离糖，已接近WHO建议的每日上限。而且DHA含量远低于标注值。',
+    voteCount: 312,
+    createdAt: Date.now() - 86400000 * 10,
+    status: 'rejected',
+  },
+  {
+    id: 5,
+    productName: '直播间爆款「乳胶床垫」',
+    pitTitle: '虚假合成：检测显示天然乳胶含量仅15%',
+    description: '号称泰国进口天然乳胶含量93%，送检结果显示合成胶占比85%，且检出甲醛超标（0.18mg/m³）。长期接触可能引发皮肤过敏和呼吸道刺激。',
+    voteCount: 445,
+    createdAt: Date.now() - 86400000 * 14,
+    status: 'verified',
+  },
+];
+
+function getDemoPostsByStatus(status: ExposeTab): ExposePost[] {
+  if (status === 'pending') return DEMO_EXPOSE_POSTS.filter(p => p.status === 'pending');
+  if (status === 'verified') return DEMO_EXPOSE_POSTS.filter(p => p.status === 'verified');
+  if (status === 'rejected') return DEMO_EXPOSE_POSTS.filter(p => p.status === 'rejected');
+  return [];
+}
+
+// ============================================
+// 示例数据回退展示（无真实数据时显示）
+// ============================================
+function DemoExposeFallback({ status }: { status: ExposeTab }) {
+  const demoPosts = getDemoPostsByStatus(status);
+  if (demoPosts.length === 0) {
+    return (
+      <div className="text-center py-20 text-slate-500">
+        {status === 'pending' ? '暂无待审核帖子 🎉' : '暂无数据'}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-sm text-slate-500 mb-3">
+        📌 演示数据 · 共 {demoPosts.length} 条（真实数据接入后自动替换）
+      </p>
+      <div className="space-y-3">
+        {demoPosts.map((post) => (
+          <div key={post.id} className="bg-slate-900 border border-dashed border-slate-700 rounded-2xl p-5 opacity-80">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-semibold text-white truncate">{post.productName}</span>
+                  <span className={`shrink-0 px-2 py-0.5 rounded text-[11px] font-medium border ${statusColor[status]}`}>
+                    {statusLabel[status]}
+                  </span>
+                </div>
+                <p className="text-sm text-blue-400 font-medium mb-1">{post.pitTitle}</p>
+                {post.description && (
+                  <p className="text-sm text-slate-400 line-clamp-2">{post.description}</p>
+                )}
+                <p className="text-xs text-slate-600 mt-2">
+                  {formatTime(post.createdAt)} · {post.voteCount} 票
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // 审核管理面板
 // ============================================
 function ExposePanel() {
@@ -144,9 +246,7 @@ function ExposePanel() {
       {loading ? (
         <div className="text-center py-20 text-slate-500">加载中...</div>
       ) : posts.length === 0 ? (
-        <div className="text-center py-20 text-slate-500">
-          {tab === 'pending' ? '暂无待审核帖子 🎉' : '暂无数据'}
-        </div>
+        <DemoExposeFallback status={tab} />
       ) : (
         <>
           <p className="text-sm text-slate-500 mb-3">共 {total} 条</p>

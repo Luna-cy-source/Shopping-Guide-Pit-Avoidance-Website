@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 隐藏 EdgeOne Pages 演示横幅 */
+body > div:has(> [class*="demonstration"]):not([id]),
+body > div[class*="edgeone"] div[class*="demo"],
+div[data-testid*="banner"]:has(> *:contains("demonstration")),
+iframe[src*="edgeone"][src*="demo"] { display: none !important; }
+
+/* EdgeOne Demo Banner 通用隐藏规则 */
+.eop-demo-banner,
+[class*="demo-banner"],
+[class*="DemoBanner"],
+[id*="eop-notice"],
+div[style*="position: fixed"][style*="bottom"]:has(> span):has(> button) { display: none !important; }
+
 @layer base {
   body {
     -webkit-font-smoothing: antialiased;

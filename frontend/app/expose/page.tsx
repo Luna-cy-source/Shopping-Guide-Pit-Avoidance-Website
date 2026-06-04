@@ -581,7 +581,7 @@ function ExposePageContent({
           真人实测，真实踩坑，一起曝光商家套路
         </p>
         <p className="mt-0.5 text-xs text-slate-400">
-          所有曝光经人工审核后展示，拒绝水军、拒绝商单
+          所有曝光经严格筛选后展示，拒绝水军、拒绝商单
         </p>
         <div className="mx-auto mt-4 w-10 border-t-2 border-orange-400" />
       </section>
