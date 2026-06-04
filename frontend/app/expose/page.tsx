@@ -399,23 +399,47 @@ function ExposeFeed() {
     </div>
   );
 
-  // 空状态
+  // 空状态 → 展示示例数据
   if (!loading && posts.length === 0 && !error) {
+    const DEMO_POSTS: ExposePost[] = [
+      { id: -1, productName: '某品牌「0糖0脂」气泡水', pitTitle: '代糖陷阱：赤藓糖醇长期饮用影响肠道菌群', description: '宣传0糖0脂但使用大量赤藓糖醇，最新研究表明过量摄入会导致腹胀、腹泻，并破坏肠道有益菌平衡。配料表排名第二位就是赤藓糖醇，含量并不低。', voteCount: 128, createdAt: Date.now() - 86400000 * 2, status: 'verified' },
+      { id: -2, productName: '网红「石墨烯」保暖内衣', pitTitle: '概念炒作：所谓石墨烯只是添加了微量炭黑', description: '售价299元，实际检测发现所谓的「石墨烯发热」成分含量不足0.1%，本质上就是普通聚酯纤维加了一点炭黑染色。发热效果与普通保暖内衣无差异。', voteCount: 86, createdAt: Date.now() - 86400000 * 5, status: 'verified' },
+      { id: -3, productName: '某平台「百亿补贴」耳机', pitTitle: '特供版缩水：同型号线上专供版用料减配', description: '外观和正品一致，但拆解后发现内部电路板缩水严重——电容从原厂换成杂牌、线材铜含量下降30%。这是专门为补贴渠道生产的「特供版」。', voteCount: 256, createdAt: Date.now() - 86400000 * 7, status: 'verified' },
+      { id: -4, productName: '儿童「DHA藻油」软糖果', pitTitle: '糖分超标：一颗含糖量相当于半罐可乐', description: '主打补充DHA的儿童保健品，但每颗含糖高达4g。按推荐日服3颗计算，孩子光吃这个就摄入12g游离糖，已接近WHO建议每日上限。', voteCount: 312, createdAt: Date.now() - 86400000 * 10, status: 'verified' },
+      { id: -5, productName: '直播间「乳胶床垫」', pitTitle: '虚假合成：检测显示天然乳胶含量仅15%', description: '号称泰国进口天然乳胶含量93%，送检结果合成胶占比85%，且检出甲醛超标（0.18mg/m³）。长期接触可能引发皮肤过敏和呼吸道刺激。', voteCount: 445, createdAt: Date.now() - 86400000 * 14, status: 'verified' },
+    ];
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-2xl shadow-sm ring-1 ring-orange-100">
-          🔥
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            🔥 最新曝光
+            <span className="rounded-full bg-slate-100 px-2 text-xs font-normal text-slate-500">
+              {DEMO_POSTS.length}+
+            </span>
+          </h2>
         </div>
-        <p className="text-sm font-medium text-slate-400">暂无曝光记录</p>
-        <p className="mt-1 text-xs text-slate-300">
-          成为第一个曝光的人，帮大家避雷！
-        </p>
-        <button
-          onClick={refresh}
-          className="mt-4 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500"
-        >
-          刷新
-        </button>
+        <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
+          {DEMO_POSTS.map((post) => (
+            <div
+              key={post.id}
+              className="mb-4 break-inside-avoid rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-all hover:shadow-md hover:-translate-y-0.5"
+            >
+              <div className="mb-3 flex items-start justify-between">
+                <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-600 ring-1 ring-orange-100">
+                  {post.productName}
+                </span>
+                <span className="text-[11px] text-slate-400">{formatTime(post.createdAt)}</span>
+              </div>
+              <p className="mb-2 text-sm font-bold text-slate-900 leading-snug">⚠️ {post.pitTitle}</p>
+              {post.description && (<p className="text-xs leading-relaxed text-slate-500">{post.description}</p>)}
+              <div className="mt-3 flex items-center gap-2 border-t border-slate-50 pt-3">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                  👍 {post.voteCount || 0} 人觉得有用
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

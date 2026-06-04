@@ -139,9 +139,6 @@ function DemoExposeFallback({ status }: { status: ExposeTab }) {
   }
   return (
     <div>
-      <p className="text-sm text-slate-500 mb-3">
-        📌 演示数据 · 共 {demoPosts.length} 条（真实数据接入后自动替换）
-      </p>
       <div className="space-y-3">
         {demoPosts.map((post) => (
           <div key={post.id} className="bg-slate-900 border border-dashed border-slate-700 rounded-2xl p-5 opacity-80">
