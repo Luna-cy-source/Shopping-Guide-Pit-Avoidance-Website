@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ============================================
 // 类型定义
@@ -15,29 +15,37 @@ export interface BookmarkItem {
 
 export type BookmarkType = 'report' | 'used_check' | 'clinic';
 
-const STORAGE_KEY = 'aibigeng_bookmarks';
+const KEY_PREFIX = 'aibigeng_bookmarks';
 const MAX_ITEMS = 30;
 
+function getStorageKey(userId: string): string {
+  return userId ? `${KEY_PREFIX}_${userId}` : KEY_PREFIX;
+}
+
 // ============================================
-// Hook: useBookmarks
-// 支持：报告页/二手防坑/选品诊所 三种类型收藏
+// Hook: useBookmarks（按用户隔离存储）
 // ============================================
-export function useBookmarks() {
+export function useBookmarks(userId?: string) {
+  const uid = userId || '';
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    const key = getStorageKey(uid);
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as BookmarkItem[];
         if (Array.isArray(parsed)) {
           setBookmarks(parsed.slice(0, MAX_ITEMS));
+          setMounted(true);
+          return;
         }
       }
     } catch { /* ignore */ }
+    setBookmarks([]);
     setMounted(true);
-  }, []);
+  }, [uid]);
 
   const isBookmarked = useCallback(
     (url: string) => bookmarks.some((b) => b.url === url),
@@ -46,15 +54,15 @@ export function useBookmarks() {
 
   const addBookmark = useCallback((url: string, productName: string, type: BookmarkType = 'report', reportData?: any) => {
     if (!url || !productName) return;
+    const key = getStorageKey(uid);
     setBookmarks((prev) => {
       const existing = prev.find((b) => b.url === url);
-      // 已收藏时更新报告数据
       if (existing) {
         if (reportData && !existing.reportData) {
           const next = prev.map((b) =>
             b.url === url ? { ...b, reportData } : b
           );
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+          try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
           return next;
         }
         return prev;
@@ -63,18 +71,19 @@ export function useBookmarks() {
         { url, productName: productName.trim(), savedAt: Date.now(), type, ...(reportData ? { reportData } : {}) },
         ...prev,
       ].slice(0, MAX_ITEMS);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+  }, [uid]);
 
   const removeBookmark = useCallback((url: string) => {
+    const key = getStorageKey(uid);
     setBookmarks((prev) => {
       const next = prev.filter((b) => b.url !== url);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+  }, [uid]);
 
   const toggleBookmark = useCallback(
     (url: string, productName: string, type: BookmarkType = 'report', reportData?: any) => {
@@ -85,11 +94,11 @@ export function useBookmarks() {
   );
 
   const clearBookmarks = useCallback(() => {
+    const key = getStorageKey(uid);
     setBookmarks([]);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }, []);
+    try { localStorage.removeItem(key); } catch {}
+  }, [uid]);
 
-  // 按类型筛选
   const getBookmarksByType = useCallback(
     (type: BookmarkType) => bookmarks.filter((b) => b.type === type),
     [bookmarks]

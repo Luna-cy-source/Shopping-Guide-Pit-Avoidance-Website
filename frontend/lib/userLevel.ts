@@ -5,7 +5,11 @@
  * 通过 XP 积累解锁头衔，在 Header、评价墙、小精灵等位置展示。
  */
 
-const STORAGE_KEY = 'ai_lab_user_progress';
+const STORAGE_PREFIX = 'ai_lab_user_progress';
+
+function getStorageKey(userId?: string): string {
+  return userId ? `${STORAGE_PREFIX}_${userId}` : STORAGE_PREFIX;
+}
 
 /* ---------- 等级配置 ---------- */
 export interface LevelConfig {
@@ -164,15 +168,15 @@ function getYesterday(): string {
 }
 
 /* ---------- 读取进度 ---------- */
-export function getUserProgress(): UserProgress {
+export function getUserProgress(userId?: string): UserProgress {
+  const key = getStorageKey(userId);
   if (typeof window === 'undefined') {
     return createDefaultProgress();
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const data = JSON.parse(raw) as UserProgress;
-      // 自动修复：确保字段完整
       return { ...createDefaultProgress(), ...data };
     }
   } catch {
@@ -198,9 +202,10 @@ function createDefaultProgress(): UserProgress {
 }
 
 /* ---------- 保存进度 ---------- */
-function saveProgress(p: UserProgress) {
+function saveProgress(p: UserProgress, userId?: string) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  const key = getStorageKey(userId);
+  localStorage.setItem(key, JSON.stringify(p));
 }
 
 /* ---------- 根据 XP 计算等级 ---------- */
@@ -235,14 +240,14 @@ export function getLevelProgressPercent(xp: number, level: number): number {
 }
 
 /* ---------- 增加 XP ---------- */
-export function addXP(actionKey: XPActionKey): {
+export function addXP(actionKey: XPActionKey, userId?: string): {
   progress: UserProgress;
   leveledUp: boolean;
   gained: number;
   newTitle?: string;
 } {
   const action = XP_ACTIONS[actionKey];
-  const p = getUserProgress();
+  const p = getUserProgress(userId);
   const now = Date.now();
 
   // 冷却检查（防止刷分）
@@ -267,7 +272,7 @@ export function addXP(actionKey: XPActionKey): {
   p.emoji = newLevel.emoji;
 
   const leveledUp = newLevel.level > oldLevel;
-  saveProgress(p);
+  saveProgress(p, userId);
 
   return {
     progress: p,
@@ -278,12 +283,12 @@ export function addXP(actionKey: XPActionKey): {
 }
 
 /* ---------- 每日签到 ---------- */
-export function dailyCheckIn(): {
+export function dailyCheckIn(userId?: string): {
   progress: UserProgress;
   checkedIn: boolean;
   streakBonus: number;
 } {
-  const p = getUserProgress();
+  const p = getUserProgress(userId);
   const today = getToday();
 
   if (p.dailyCheckInDate === today) {
@@ -307,14 +312,15 @@ export function dailyCheckIn(): {
   p.title = newLevel.title;
   p.emoji = newLevel.emoji;
 
-  saveProgress(p);
+  saveProgress(p, userId);
   return { progress: p, checkedIn: true, streakBonus };
 }
 
 /* ---------- 重置进度（调试用） ---------- */
-export function resetProgress() {
+export function resetProgress(userId?: string) {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEY);
+  const key = getStorageKey(userId);
+  localStorage.removeItem(key);
 }
 
 /* ---------- 监听 XP 变化（简单 pub/sub） ---------- */
