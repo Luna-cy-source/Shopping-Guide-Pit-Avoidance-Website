@@ -422,21 +422,27 @@ function ExposeFeed() {
           {DEMO_POSTS.map((post) => (
             <div
               key={post.id}
-              className="mb-4 break-inside-avoid rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-all hover:shadow-md hover:-translate-y-0.5"
+              className="group mb-4 break-inside-avoid rounded-2xl border border-orange-100/80 bg-gradient-to-br from-white to-orange-50/30 p-4 shadow-[0_2px_16px_rgba(249,115,22,0.06)] transition-all hover:-translate-y-1 hover:shadow-[0_8px_28px_rgba(249,115,22,0.12)]"
             >
+              {/* 产品标签 + 时间 */}
               <div className="mb-3 flex items-start justify-between">
-                <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-600 ring-1 ring-orange-100">
+                <span className="rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-orange-200/60">
                   {post.productName}
                 </span>
-                <span className="text-[11px] text-slate-400">{formatTime(post.createdAt)}</span>
+                <span className="text-[11px] text-slate-400 font-medium">{formatTime(post.createdAt)}</span>
               </div>
-              <p className="mb-2 text-sm font-bold text-slate-900 leading-snug">⚠️ {post.pitTitle}</p>
-              {post.description && (<p className="text-xs leading-relaxed text-slate-500">{post.description}</p>)}
-              <div className="mt-3 flex items-center gap-2 border-t border-slate-50 pt-3">
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                  👍 {post.voteCount || 0} 人觉得有用
-                </span>
-              </div>
+
+              {/* 坑点标题 */}
+              <p className="mb-2 text-[15px] font-extrabold text-slate-800 leading-snug tracking-tight">
+                ⚡ {post.pitTitle}
+              </p>
+
+              {/* 描述 */}
+              {post.description && (
+                <p className="text-[13px] leading-relaxed text-slate-600 border-l-2 border-orange-300 pl-3 py-0.5 bg-orange-50/40 rounded-r-md">
+                  {post.description}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -526,36 +532,29 @@ function ExposeFeed() {
           {posts.map((post) => (
             <div
               key={post.id}
-              className="mb-4 break-inside-avoid rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-all hover:shadow-md hover:-translate-y-0.5"
+              className="group mb-4 break-inside-avoid rounded-2xl border border-orange-100/80 bg-gradient-to-br from-white to-orange-50/30 p-4 shadow-[0_2px_16px_rgba(249,115,22,0.06)] transition-all hover:-translate-y-1 hover:shadow-[0_8px_28px_rgba(249,115,22,0.12)]"
             >
               {/* 产品名 + 时间 */}
               <div className="mb-3 flex items-start justify-between">
-                <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-600 ring-1 ring-orange-100">
+                <span className="rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-orange-200/60">
                   {post.productName}
                 </span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-400 font-medium">
                   {formatTime(post.createdAt)}
                 </span>
               </div>
 
               {/* 坑点标题 */}
-              <p className="mb-2 text-sm font-bold text-slate-900 leading-snug">
-                ⚠️ {post.pitTitle}
+              <p className="mb-2 text-[15px] font-extrabold text-slate-800 leading-snug tracking-tight">
+                ⚡ {post.pitTitle}
               </p>
 
               {/* 详细描述 */}
               {post.description && (
-                <p className="text-xs leading-relaxed text-slate-500">
+                <p className="text-[13px] leading-relaxed text-slate-600 border-l-2 border-orange-300 pl-3 py-0.5 bg-orange-50/40 rounded-r-md">
                   {post.description}
                 </p>
               )}
-
-              {/* 底栏：有用数 */}
-              <div className="mt-3 flex items-center gap-2 border-t border-slate-50 pt-3">
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                  👍 {post.voteCount || 0} 人觉得有用
-                </span>
-              </div>
             </div>
           ))}
         </div>
