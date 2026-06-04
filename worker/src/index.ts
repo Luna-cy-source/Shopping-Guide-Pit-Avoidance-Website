@@ -1007,6 +1007,56 @@ app.get('/api/expose', async (c) => {
 });
 
 // ============================================
+// GET /api/admin/expose — 审核管理：获取待审核列表
+// ============================================
+app.get('/api/admin/expose', async (c) => {
+  const status = c.req.query('status') || 'pending';
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
+
+  try {
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM expose_posts WHERE status = ?`
+    ).bind(status).first<{ total: number }>();
+    const qr = await c.env.DB.prepare(
+      `SELECT id, product_name, pit_title, description, status, vote_count, created_at FROM expose_posts WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    ).bind(status, limit, offset).all();
+    const results = qr.results ?? [];
+    const posts = results.map((r: any) => ({
+      id: r.id, productName: r.product_name, pitTitle: r.pit_title,
+      description: r.description, status: r.status, voteCount: r.vote_count, createdAt: r.created_at,
+    }));
+    return c.json({ posts, hasMore: results.length >= limit, total: countResult?.total ?? 0 });
+  } catch (e) {
+    const msg = String((e instanceof Error ? e : new Error(String(e))).message ?? '');
+    if (msg.includes('no such table')) return c.json({ posts: [], hasMore: false, total: 0, error: '表未初始化', code: 'DB_TABLE_MISSING' }, 500);
+    return c.json({ posts: [], hasMore: false, total: 0, error: '查询失败', code: 'DB_QUERY_ERROR', detail: msg }, 500);
+  }
+});
+
+// ============================================
+// PUT /api/admin/expose/:id — 审核操作（通过/拒绝）
+// ============================================
+app.put('/api/admin/expose/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (!id || isNaN(id)) return c.json({ error: '无效的帖子ID' }, 400);
+  let body: { status: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: '必须是合法 JSON' }, 400); }
+  if (!['verified', 'rejected'].includes(body.status)) return c.json({ error: 'status 必须是 verified 或 rejected' }, 400);
+
+  try {
+    const result = await c.env.DB.prepare(
+      `UPDATE expose_posts SET status = ? WHERE id = ?`
+    ).bind(body.status, id).run();
+    if (result.meta?.changes === 0) return c.json({ error: '帖子不存在' }, 404);
+    return c.json({ success: true, status: body.status, message: body.status === 'verified' ? '已通过审核' : '已拒绝' });
+  } catch (e) {
+    const msg = String((e instanceof Error ? e : new Error(String(e))).message ?? '');
+    return c.json({ error: '操作失败', detail: msg }, 500);
+  }
+});
+
+// ============================================
 // GET /api/diagnose — 诊断端点（排查各组件连通性）
 // ============================================
 app.get('/api/diagnose', async (c) => {

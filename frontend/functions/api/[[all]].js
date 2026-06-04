@@ -867,6 +867,28 @@ export const onRequest = async (context) => {
     return json({ success: true, message: '提交成功' });
   }
 
+  // ======== GET /api/admin/expose — 审核管理：获取待审核列表 ========
+  if (path === '/api/admin/expose' && method === 'GET') {
+    const filterStatus = url.searchParams.get('status') || 'pending';
+    const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+    const filtered = memoryExposes.filter(p => p.status === filterStatus);
+    const page = filtered.slice(offset, offset + limit);
+    return json({ posts: page, hasMore: offset + limit < filtered.length, total: filtered.length });
+  }
+
+  // ======== PUT /api/admin/expose/:id — 审核操作 ========
+  if (path.startsWith('/api/admin/expose/') && method === 'PUT') {
+    const id = path.split('/').pop();
+    let body;
+    try { body = await request.json(); } catch { return json({ error: '必须是合法 JSON' }, 400); }
+    if (!['verified', 'rejected'].includes(body.status)) return json({ error: 'status 必须是 verified 或 rejected' }, 400);
+    const post = memoryExposes.find(p => p.id === id);
+    if (!post) return json({ error: '帖子不存在' }, 404);
+    post.status = body.status;
+    return json({ success: true, status: body.status, message: body.status === 'verified' ? '已通过审核' : '已拒绝' });
+  }
+
   if (path === '/api/feedback' && method === 'POST') {
     return json({ success: true, message: '反馈已记录' });
   }
