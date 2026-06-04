@@ -182,3 +182,91 @@ export async function loadBookmarks(userId: string): Promise<any[] | null> {
   }
   return null;
 }
+
+// ============================================
+// 管理员功能
+// ============================================
+
+export interface AdminUserItem {
+  _id: string;
+  _key: string;
+  username: string;
+  nickname: string;
+  avatar: string;
+  createdAt: number;
+  xp: number;
+  level: number;
+  updatedAt?: number;
+}
+
+/** 管理员：列出所有用户 */
+export async function adminListAllUsers(): Promise<AdminUserItem[]> {
+  if (!ready) { await initCloudBase(); }
+  if (!ready) return [];
+  try {
+    const res = await getDb().collection('users').limit(100).get();
+    return (res.data || []).map((u: any) => ({
+      _id: u._id,
+      _key: u._key || u.username?.toLowerCase() || '',
+      username: u.username || '',
+      nickname: u.nickname || '',
+      avatar: u.avatar || '',
+      createdAt: u.createdAt || 0,
+      xp: u.xp || 0,
+      level: u.level || 1,
+      updatedAt: u.updatedAt,
+    }));
+  } catch (e) {
+    console.warn('[Admin] 列出用户失败:', e);
+    return [];
+  }
+}
+
+/** 管理员：删除用户及其关联数据 */
+export async function adminDeleteUser(username: string): Promise<boolean> {
+  if (!ready) return false;
+  const key = username.toLowerCase();
+  try {
+    // 1. 删除用户记录
+    const res = await getDb().collection('users').where({ _key: key }).limit(1).get();
+    if (res.data?.length > 0) {
+      await getDb().collection('users').doc(res.data[0]._id).remove();
+    }
+    // 2. 删除搜索历史
+    const histRes = await getDb().collection('user_history').where({ userId: key }).limit(1).get();
+    if (histRes.data?.length > 0) {
+      await getDb().collection('user_history').doc(histRes.data[0]._id).remove();
+    }
+    // 3. 删除收藏
+    const bmRes = await getDb().collection('user_bookmarks').where({ userId: key }).limit(1).get();
+    if (bmRes.data?.length > 0) {
+      await getDb().collection('user_bookmarks').doc(bmRes.data[0]._id).remove();
+    }
+    return true;
+  } catch (e) {
+    console.warn('[Admin] 删除用户失败:', e);
+    return false;
+  }
+}
+
+/** 管理员：获取用户搜索历史 */
+export async function adminGetUserHistory(username: string): Promise<{ query: string; timestamp: number }[]> {
+  if (!ready) return [];
+  try {
+    const res = await getDb().collection('user_history').where({ userId: username.toLowerCase() }).limit(1).get();
+    return res.data?.[0]?.items || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** 管理员：获取用户收藏 */
+export async function adminGetUserBookmarks(username: string): Promise<any[]> {
+  if (!ready) return [];
+  try {
+    const res = await getDb().collection('user_bookmarks').where({ userId: username.toLowerCase() }).limit(1).get();
+    return res.data?.[0]?.items || [];
+  } catch (e) {
+    return [];
+  }
+}
