@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { initCloudBase, isCloudReady, saveBookmarks, loadBookmarks } from '@/lib/cloudbase-storage';
 
 // ============================================
 // 类型定义
@@ -39,6 +40,23 @@ export function useBookmarks(userId?: string) {
         if (Array.isArray(parsed)) {
           setBookmarks(parsed.slice(0, MAX_ITEMS));
           setMounted(true);
+          // ★ 后台尝试从云端拉取最新数据
+          if (uid) {
+            initCloudBase().then(() => {
+              if (!isCloudReady()) return;
+              loadBookmarks(uid).then(cloudItems => {
+                if (cloudItems && cloudItems.length > 0) {
+                  setBookmarks(prev => {
+                    if (prev.length === 0 || cloudItems.length >= prev.length) {
+                      try { localStorage.setItem(key, JSON.stringify(cloudItems.slice(0, MAX_ITEMS))); } catch {}
+                      return cloudItems.slice(0, MAX_ITEMS);
+                    }
+                    return prev;
+                  });
+                }
+              }).catch(() => {});
+            });
+          }
           return;
         }
       }
@@ -63,6 +81,7 @@ export function useBookmarks(userId?: string) {
             b.url === url ? { ...b, reportData } : b
           );
           try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+          if (uid) saveBookmarks(uid, next).catch(() => {});
           return next;
         }
         return prev;
@@ -72,6 +91,7 @@ export function useBookmarks(userId?: string) {
         ...prev,
       ].slice(0, MAX_ITEMS);
       try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      if (uid) saveBookmarks(uid, next).catch(() => {});
       return next;
     });
   }, [uid]);
@@ -81,6 +101,7 @@ export function useBookmarks(userId?: string) {
     setBookmarks((prev) => {
       const next = prev.filter((b) => b.url !== url);
       try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      if (uid) saveBookmarks(uid, next).catch(() => {});
       return next;
     });
   }, [uid]);
@@ -97,6 +118,7 @@ export function useBookmarks(userId?: string) {
     const key = getStorageKey(uid);
     setBookmarks([]);
     try { localStorage.removeItem(key); } catch {}
+    if (uid) saveBookmarks(uid, []).catch(() => {});
   }, [uid]);
 
   const getBookmarksByType = useCallback(

@@ -1,7 +1,15 @@
 /**
- * 自定义认证系统 — 纯客户端（localStorage）
+ * 自定义认证系统 — localStorage + CloudBase 云端同步
  * 支持注册、登录、登出，密码 SHA-256 哈希存储
+ * 数据优先读写 localStorage，后台异步同步到 CloudBase
  */
+
+import {
+  initCloudBase,
+  isCloudReady,
+  saveUserProfile,
+  loadUserProfile,
+} from './cloudbase-storage';
 
 export interface UserInfo {
   username: string;
@@ -138,6 +146,13 @@ export async function register(username: string, password: string, nickname?: st
   users[key] = { passwordHash, user };
   saveUsers(users);
 
+  // ★ 同步到 CloudBase（后台异步，不阻塞）
+  initCloudBase().then(() => {
+    if (isCloudReady()) {
+      saveUserProfile({ ...user, passwordHash }).catch(() => {});
+    }
+  });
+
   // 自动登录
   const session: AuthSession = {
     user,
@@ -174,6 +189,21 @@ export async function login(username: string, password: string): Promise<AuthRes
   record.user.xp += 5;
   record.user.level = calcLevel(record.user.xp);
   saveUsers(users);
+
+  // ★ 同步到 CloudBase
+  initCloudBase().then(() => {
+    if (isCloudReady()) {
+      saveUserProfile({
+        username: record.user.username,
+        passwordHash: record.passwordHash,
+        nickname: record.user.nickname,
+        avatar: record.user.avatar,
+        createdAt: record.user.createdAt,
+        xp: record.user.xp,
+        level: record.user.level,
+      }).catch(() => {});
+    }
+  });
 
   const session: AuthSession = {
     user: record.user,
@@ -236,4 +266,43 @@ export function isAuthenticated(): boolean {
 export function getCurrentUser(): UserInfo | null {
   const session = getCurrentSession();
   return session?.user || null;
+}
+
+// ============================================
+// 从云端拉取用户数据（换设备登录时使用）
+// ============================================
+export async function pullUserFromCloud(username: string, passwordHash: string): Promise<AuthResult> {
+  await initCloudBase();
+  if (!isCloudReady()) return { success: false, error: '云端暂不可用' };
+
+  try {
+    const profile = await loadUserProfile(username);
+    if (!profile) return { success: false, error: '云端无此账号，请先在本机注册后同步' };
+    if (profile.passwordHash !== passwordHash) return { success: false, error: '密码不匹配' };
+
+    // 恢复本地数据
+    const users = getUsers();
+    const key = username.toLowerCase();
+    const user: UserInfo = {
+      username: profile.username,
+      nickname: profile.nickname,
+      avatar: profile.avatar,
+      createdAt: profile.createdAt,
+      xp: profile.xp,
+      level: profile.level,
+    };
+    users[key] = { passwordHash, user };
+    saveUsers(users);
+
+    const session: AuthSession = {
+      user,
+      token: generateToken(username),
+      expiresAt: Date.now() + SESSION_DURATION,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+
+    return { success: true, user };
+  } catch (e) {
+    return { success: false, error: '云端同步失败' };
+  }
 }

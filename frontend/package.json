@@ -11,6 +11,7 @@
     "@ai-sdk/deepseek": "^1.0.0",
     "@clerk/clerk-react": "^5.61.8",
     "@clerk/nextjs": "^6.39.5",
+    "@cloudbase/js-sdk": "^3.3.13",
     "ai": "^4.0.0",
     "echarts": "^5.5.0",
     "echarts-for-react": "^3.0.0",

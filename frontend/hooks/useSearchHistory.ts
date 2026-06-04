@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { initCloudBase, isCloudReady, saveSearchHistory, loadSearchHistory } from '@/lib/cloudbase-storage';
 
 // ============================================
 // 类型定义
@@ -30,9 +31,11 @@ export function useSearchHistory(userId?: string) {
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [mounted, setMounted] = useState(false);
 
-  // ---- 挂载/切换用户时从 localStorage 读取 ----
+  // ---- 挂载/切换用户时从 localStorage + 云端读取 ----
   useEffect(() => {
     const key = getStorageKey(uid);
+    // 先读本地
+    let loaded = false;
     try {
       const raw = localStorage.getItem(key);
       if (raw) {
@@ -40,14 +43,34 @@ export function useSearchHistory(userId?: string) {
         if (Array.isArray(parsed)) {
           setHistory(parsed.slice(0, MAX_ITEMS));
           setMounted(true);
-          return;
+          loaded = true;
         }
       }
-    } catch {
-      // localStorage 解析失败，忽略
+    } catch { /* ignore */ }
+
+    if (!loaded) {
+      setHistory([]);
+      setMounted(true);
     }
-    setHistory([]);
-    setMounted(true);
+
+    // ★ 后台尝试从云端拉取最新数据
+    if (uid) {
+      initCloudBase().then(() => {
+        if (!isCloudReady()) return;
+        loadSearchHistory(uid).then(cloudItems => {
+          if (cloudItems && cloudItems.length > 0) {
+            setHistory(prev => {
+              // 云端数据更新或本地为空时使用云端
+              if (prev.length === 0 || cloudItems.length >= prev.length) {
+                try { localStorage.setItem(key, JSON.stringify(cloudItems.slice(0, MAX_ITEMS))); } catch {}
+                return cloudItems.slice(0, MAX_ITEMS);
+              }
+              return prev;
+            });
+          }
+        }).catch(() => {});
+      });
+    }
   }, [uid]);
 
   // ---- 添加搜索记录（去重 + 限制条数）----
@@ -57,20 +80,16 @@ export function useSearchHistory(userId?: string) {
 
     const key = getStorageKey(uid);
     setHistory((prev) => {
-      // 去重：移除已存在的相同搜索词
       const filtered = prev.filter((item) => item.query !== trimmed);
-      // 新记录插到最前面
       const next = [
         { query: trimmed, timestamp: Date.now() },
         ...filtered,
       ].slice(0, MAX_ITEMS);
 
-      // 持久化到 localStorage
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        // 写入失败忽略
-      }
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+
+      // ★ 同步到云端
+      if (uid) saveSearchHistory(uid, next).catch(() => {});
 
       return next;
     });
@@ -80,11 +99,8 @@ export function useSearchHistory(userId?: string) {
   const clearHistory = useCallback(() => {
     const key = getStorageKey(uid);
     setHistory([]);
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // ignore
-    }
+    try { localStorage.removeItem(key); } catch {}
+    if (uid) saveSearchHistory(uid, []).catch(() => {});
   }, [uid]);
 
   // ---- 删除单条 ----
@@ -92,11 +108,8 @@ export function useSearchHistory(userId?: string) {
     const key = getStorageKey(uid);
     setHistory((prev) => {
       const next = prev.filter((item) => item.query !== query);
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      if (uid) saveSearchHistory(uid, next).catch(() => {});
       return next;
     });
   }, [uid]);
