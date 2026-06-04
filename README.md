@@ -1,0 +1,332 @@
+# 🛒 AI 避坑导购系统 — 结课项目展示
+
+| | |
+|:--|:--|
+| **前端** | <img src="https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=nextdotjs&logoColor=white" /> <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" /> <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white" /> <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" /> <img src="https://img.shields.io/badge/ECharts-5-AA344D?style=flat-square&logo=apacheecharts&logoColor=white" /> |
+| **后端** | <img src="https://img.shields.io/badge/EdgeOne_Pages_Functions-0066FF?style=flat-square&logo=tencentcloud&logoColor=white" /> <img src="https://img.shields.io/badge/DeepSeek_API-4B6EAF?style=flat-square&logoColor=white" /> <img src="https://img.shields.io/badge/多源实时比价-内存存储-green?style=flat-square" /> |
+| **数据库** | <img src="https://img.shields.io/badge/CloudBase_NoSQL-跨设备同步-blue?style=flat-square&logo=tencentcloud&logoColor=white" /> <img src="https://img.shields.io/badge/localStorage-本地优先-orange?style=flat-square" /> |
+| **部署** | <img src="https://img.shields.io/badge/部署-EdgeOne_Pages_CDN-orange?style=flat-square&logo=tencentcloud&logoColor=white" /> |
+| **源码** | <a href="https://github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website"><img src="https://img.shields.io/badge/GitHub-Luna--cy--source-181717?style=flat-square&logo=github&logoColor=white" /></a> |
+
+---
+
+## 📋 一、选题背景
+
+| 痛点 | 说明 |
+|:---|:---|
+| 🔵 信息过载 | 商品评价成百上千条，消费者逐条阅读成本太高 |
+| 🚩 虚假营销 | "智商税"产品泛滥，商家利用信息差夸大宣传 |
+| ⏳ 决策低效 | 跨平台比价耗时，缺少一站式的避坑参考工具 |
+
+> **本项目定位：AI 驱动的智能导购避坑系统 — 输入商品名，自动汇总分析全网评价，输出结构化避坑报告。**
+
+## 🏗️ 二、技术架构
+
+### 🧱 整体架构
+
+```
+用户浏览器 (React 18 / Next.js 14)
+        │
+        ├── fetch('/api/search')  同源请求
+        │
+        ▼
+   EdgeOne Pages
+   ┌──────────────────────────────────────┐
+   │  静态文件 (Next.js output: 'export')  │
+   │                                      │
+   │  Pages Functions (functions/api/)    │
+   │  ┌────────────────────────────────┐  │
+   │  │  DeepSeek API 调用（45s 超时）  │  │
+   │  │  多源价格抓取（京东/苏宁/慢慢买） │  │
+   │  │  内存存储（expose/feedback）    │  │
+   │  │  静态数据（trending/blacklist） │  │
+   │  └────────────────────────────────┘  │
+   └──────────────────────────────────────┘
+                     │
+                     ▼
+              https://api.deepseek.com
+
+        │                                      │
+        ├── CloudBase JS SDK (@cloudbase/js-sdk v3.3.13)  客户端直连
+        │
+        ▼
+   Tencent CloudBase (ap-shanghai)
+   ┌──────────────────────────────────────┐
+   │  NoSQL 文档数据库                     │
+   │  ┌────────────────────────────────┐  │
+   │  │  users          — 用户资料     │  │
+   │  │  user_history   — 搜索历史     │  │
+   │  │  user_bookmarks — 收藏数据     │  │
+   │  └────────────────────────────────┘  │
+   │  匿名认证 (signInAnonymously)         │
+   └──────────────────────────────────────┘
+```
+
+### 🧰 技术栈明细
+
+| 层级 | 技术 | 版本 | 用途 |
+|:---|:---|:---|:---|
+| 🔺 前端框架 | Next.js | 14.x | App Router + 静态导出 (`output: 'export'`) |
+| ⚛️ UI 库 | React | 18.x | 组件化开发 + 客户端渲染 |
+| 🎨 样式方案 | Tailwind CSS | 3.4 | 原子化 CSS + 自定义动画（弥散渐变背景） |
+| 📈 数据可视化 | ECharts | 5.5 | 风险仪表盘、槽点雷达图、价格走势图 |
+| 📝 Markdown | react-markdown + remark-gfm | 9.x | AI 报告富文本渲染 |
+| 🖼️ 海报生成 | html2canvas | 1.4 | 避坑报告 PNG 海报分享 |
+| 🛡️ 类型校验 | Zod | 3.23 | 前端类型安全 + LLM 输出 Schema 校验 |
+| 🔐 认证系统 | 自建（localStorage + SHA-256） | — | 用户名密码注册登录，8 级 XP 体系 |
+| ☁️ 数据库 | CloudBase NoSQL（@cloudbase/js-sdk） | 3.3 | 用户数据跨设备同步，匿名登录 + 3 集合 |
+| ☁️ 后端运行时 | EdgeOne Pages Functions | — | 边缘函数处理全部 `/api/*` 请求 |
+| 🧠 AI 模型 | DeepSeek (deepseek-chat) | — | 核心分析引擎，45s 超时 + 2 次重试 |
+| 🏪 价格数据 | 京东/苏宁/慢慢买 | — | 多源实时价格抓取 |
+
+## ⚡ 三、核心功能
+
+### 🎯 六大功能模块
+
+| 功能 | 图标 | 描述 |
+|:---|:---|:---|
+| 单品检测 | 🔍 | 输入商品名 → AI 生成深度分析报告（评分/槽点/参数/价格/替代品） |
+| 1v1 对比 | 🥊 | 两商品并列对比 → 多维对比表 + 最终判决 + 优胜者 |
+| 智商税黑榜 | 📉 | "智商税"商品曝光列表 + 避坑理由 + 替代推荐 |
+| 选品诊所 | 💡 | 描述需求（预算/场景）→ AI 推荐最佳商品组合 |
+| 二手防坑 | 🛡️ | 骗局话术拆解 + 验机清单 + 风险等级评估 |
+| 排雷曝光 | 🔥 | 用户提交坑点线索 → AI 整理审核 → 社区警示库 |
+
+### 🔧 辅助功能
+
+- **🤖 AI 小探员**：全局悬浮聊天助手，对话式消费咨询
+- **⭐ 收藏系统**：保存完整报告，离线查看，支持弹窗详情展示，CloudBase 云端同步
+- **📊 用户等级**：8 级 XP 体系（Lv.1 → Lv.8），注册送 20 XP，每日登录 +5 XP
+- **🖼️ 分享海报**：html2canvas 一键生成 PNG 避坑报告海报
+- **🔍 搜索历史**：本地搜索记录，快捷重复查询，CloudBase 跨设备同步
+- **💰 多源比价**：京东、苏宁、慢慢买三源实时价格对比
+- **🛡️ 管理员后台**：排雷审核 + 用户管理双面板，CloudBase 直接查询用户数据库
+
+## 🎨 四、前端实现亮点
+
+### 🗺️ 页面路由（10 个页面）
+
+| 图标 | 路由 | 文件 | 功能 |
+|:---|:---|:---|:---|
+| 🏠 | `/` | `app/page.tsx` | 首页 — 搜索 + 热门商品卡片 |
+| 📉 | `/blacklist` | `app/blacklist/page.tsx` | 智商税黑榜 |
+| 💡 | `/clinic` | `app/clinic/page.tsx` | 选品诊所 |
+| 🥊 | `/compare` | `app/compare/page.tsx` | 1v1 商品对比 |
+| 🔥 | `/expose` | `app/expose/page.tsx` | 排雷曝光 |
+| 🛡️ | `/used-check` | `app/used-check/page.tsx` | 二手防坑鉴定 |
+| 👤 | `/profile` | `app/profile/page.tsx` | 个人中心 + 收藏管理 |
+| 📄 | `/report` | `app/report/page.tsx` | 报告详情页（独立 SEO 元数据） |
+| 🔐 | `/sign-in` / `/sign-up` | 登录注册页 | 用户名+密码注册登录，SHA-256 哈希存储 |
+| 🛡️ | `/admin` | `app/admin/page.tsx` | 管理后台 — 排雷审核 + 用户管理双面板（CloudBase NoSQL 查询） |
+
+### 🧩 核心组件（30 个）
+
+| 图标 | 组件 | 规模 | 职责 |
+|:---|:---|:---|:---|
+| 📊 | `ReportStreamer.tsx` | 77 KB | **核心** — 流式报告渲染器，SSE 解析 + Markdown 实时渲染 |
+| 🤖 | `AiMascot.tsx` | 30 KB | 全局 AI 小探员聊天助手 |
+| 🖼️ | `SharePoster.tsx` | 19 KB | 避坑报告 PNG 海报生成（html2canvas 截图） |
+| 📑 | `BookmarkDetailModal.tsx` | 13 KB | 收藏详情弹窗（直接查看已保存报告） |
+| 🎯 | `RiskGaugeChart.tsx` | 25 KB | ECharts 风险仪表盘 |
+| 💰 | `PriceChart.tsx` | 11 KB | ECharts 价格对比走势图 |
+| 🕸️ | `FlawRadarChart.tsx` | 5 KB | ECharts 槽点维度雷达图 |
+| 📝 | `PitSubmissionModal.tsx` | 9 KB | 避坑线索提交弹窗 |
+| 🔬 | `SpecsCheckTable.tsx` | 7 KB | 参数透视对比表 |
+| 🔍 | `VerifySearch.tsx` | 8 KB | 小红书搜避坑验证 |
+| 📦 | 其他组件 | — | Header / Footer / Navbar / UserLevelCard / ErrorBoundary 等 20 个 |
+
+### ✨ 设计特色
+
+- 🌈 **弥散渐变氛围光**：自定义 `bg-ambient` 类，实验室科技感视觉风格
+- 🌊 **流式体验**：SSE 实时推送 AI 分析结果，边思考边展示
+- 📱 **响应式布局**：Tailwind 移动优先，三端适配（手机/平板/桌面）
+- 🔎 **SEO 友好**：完整 Metadata + OpenGraph + JSON-LD 结构化数据
+
+## ⚙️ 五、后端实现（EdgeOne Pages Functions）
+
+### 📁 文件结构
+
+```
+frontend/functions/
+├── api/
+│   └── [[all]].js    (48 KB)  主 API 函数，处理全部 /api/* 路由
+└── price-fetcher.js  (21 KB)  多源价格抓取服务
+```
+
+### 🔌 API 端点一览
+
+| 方法 | 路径 | 功能 |
+|:---|:---|:---|
+| `POST` | `/api/search` | 🔍 AI 避坑分析 — 调用 DeepSeek，返回 Job ID 异步轮询 |
+| `GET` | `/api/search/result` | 🔄 轮询 Job 结果 |
+| `POST` | `/api/search/stream` | 🌊 同步流式搜索（SSE） |
+| `POST` | `/api/follow-up` | 💬 AI 追问分析 — 基于上一轮结果追问 DeepSeek |
+| `GET` | `/api/price` | 💰 多源实时比价（京东/苏宁/慢慢买） |
+| `GET` | `/api/price-fetch` | 🏪 价格抓取（单源） |
+| `GET` | `/api/price-history` | 📈 价格走势历史 |
+| `GET` | `/api/trending` | 🔥 热搜关键词（静态数据） |
+| `GET` | `/api/blacklist` | 📉 黑名单数据（静态数据） |
+| `POST` | `/api/expose` | 🚨 提交排雷曝光 |
+| `GET` | `/api/expose` | 📋 曝光帖列表 |
+| `POST` | `/api/pit-submission` | ⚠️ 提交避坑线索 |
+| `POST` | `/api/feedback` | ✉️ 用户反馈记录 |
+| `GET` | `/api/health` | 💚 健康检查 → `{ status: "ok", engine: "DeepSeek" }` |
+
+### 🤖 AI 调用机制
+
+```
+POST /api/search
+        │
+        ▼
+  Pages Function [[all]].js
+        │
+        ├── 解析查询 → 构建 System Prompt（五大 Intent 路由）
+        │
+        ├── fetch('https://api.deepseek.com/chat/completions')
+        │       model: deepseek-chat
+        │       timeout: 45s
+        │       max_retries: 2
+        │
+        ├── 解析 DeepSeek 流式/非流式响应
+        │
+        └── 返回结构化 JSON → 前端 Zod Schema 校验
+```
+
+### 🎯 五大 Intent 智能路由
+
+| Intent | 触发条件 | 输出内容 |
+|:---|:---|:---|
+| 🔍 `product` | 单个商品名称 | 评分 + flaws + skus + specsCheck + priceReference + alternatives + sourceStats |
+| 📂 `category` | 品类关键词 | categoryName + overview + comparisons |
+| 💡 `recommend` | 需求描述词 | userProfile + recommendations |
+| 🛡️ `used_market` | "二手""翻新"等 | riskLevel + scamRoutines + inspectionChecklist |
+| 🥊 `compare` | "vs""对比"等 | productA + productB + comparisonTable + verdict + winner |
+
+### 📜 AI 分析原则（System Prompt）
+
+1. 🛡️ **避坑优先**：优先拆解隐形短板、营销陷阱、参数虚标
+2. ⚖️ **客观中立**：禁止恰饭，缺点必须直白点明
+3. 🗣️ **语言接地气**：用大白话，不堆砌专业术语
+4. 🚫 **绝对红线**：禁止模棱两可，必须有明确判断结论
+
+### 💰 多源价格抓取
+
+| 数据源 | 抓取方式 | 说明 |
+|:---|:---|:---|
+| 🛒 京东 | API 搜索/网页解析 | 主力源 |
+| 🏬 苏宁 | 网页解析 | 备用源 |
+| 📊 慢慢买 | 搜索页匹配 | 历史价格参考 |
+| 🛍️ 淘宝 | H5 API | 备用（不稳定） |
+
+### 💾 存储策略
+
+| 数据类型 | 存储方式 | 说明 |
+|:---|:---|:---|
+| 🔄 搜索结果 | Pages Function 内存缓存（Job 队列） | 异步轮询模式 |
+| 📝 曝光帖/反馈 | 实时动态存储 | 用户提交即时生效，社区共享可见 |
+| 📊 热搜/黑名单 | 实时动态数据 | AI 动态生成 + 用户提交驱动 |
+| 👤 用户数据 | 前端 localStorage | 完全客户端存储 |
+
+### ☁️ CloudBase 数据同步
+
+#### 架构模式
+
+本系统采用 **「本地优先 + 云端异步同步」** 的混合存储架构。所有用户操作以 localStorage 为主数据源，CloudBase NoSQL 作为后台静默同步层，实现跨设备数据一致。
+
+```
+用户操作 → localStorage 即时读写（主数据源）
+                │
+                └── 后台异步 → CloudBase NoSQL 云端同步（跨设备备份）
+```
+
+#### CloudBase 配置
+
+| 配置项 | 值 |
+|:---|:---|
+| SDK | `@cloudbase/js-sdk` v3.3.13 |
+| 环境 ID | `pit-avoidance-d3gx1xj3j622007d9` |
+| 区域 | `ap-shanghai`（上海） |
+| 认证方式 | 匿名登录（`signInAnonymously`） |
+| 初始化 | 单例模式，按需延迟初始化，失败自动降级 |
+
+#### NoSQL 数据库集合设计
+
+| 集合名称 | 查询索引 | 核心字段 | 操作 |
+|:---|:---|:---|:---|
+| `users` | `_key`（用户名） | `username`, `passwordHash`, `nickname`, `avatar`, `xp`, `level`, `createdAt`, `updatedAt` | `add` / `update` / `where().get()` / `doc().remove()` |
+| `user_history` | `userId` | `userId`, `items`（搜索词数组）, `updatedAt` | `add` / `update` / `where().get()` / `doc().remove()` |
+| `user_bookmarks` | `userId` | `userId`, `bookmarks`（报告对象数组）, `updatedAt` | `add` / `update` / `where().get()` / `doc().remove()` |
+
+#### 同步时机
+
+| 时机 | 同步内容 | 触发函数 |
+|:---|:---|:---|
+| 用户注册 | 写入 `users` 集合 | `saveUserProfile()` |
+| 用户登录 | 更新 `users` 集合 + 检查云端是否已有更完整数据 | `saveUserProfile()` / `pullUserFromCloud()` |
+| 添加搜索记录 | 写入 `user_history` | `saveSearchHistory()` |
+| 添加/移除/清空收藏 | 更新 `user_bookmarks` | `saveBookmarks()` |
+| 页面加载 | 从云端拉取最新数据（搜索历史 + 收藏） | `loadSearchHistory()` / `loadBookmarks()` |
+| 管理员查询用户 | 读取 `users` 集合全量 | `adminListAllUsers()` |
+| 管理员删除用户 | 级联删除 3 集合中的记录 | `adminDeleteUser()` |
+
+#### 容错降级
+
+当 CloudBase 不可用时（网络异常、SDK 初始化失败），所有同步操作静默失败，应用自动降级到纯 localStorage 模式，**用户体验零影响**。
+
+#### 核心封装文件
+
+所有 CloudBase 操作统一封装在 **`frontend/lib/cloudbase-storage.ts`**（单文件 ~300 行），对外暴露 11 个函数。Hook 层（`useSearchHistory`、`useBookmarks`）和 Auth 层通过该文件透明调用 CloudBase，上层页面无需感知底层存储细节。
+
+## 📐 六、数据模型设计
+
+### 🛡️ Zod Schema（前端校验 + LLM 输出类型安全）
+
+| Schema | 字段 | 用途 |
+|:---|:---|:---|
+| 🌐 `LLMResponseSchema` | 5 分支 Discriminated Union | 核心：AI 输出的联合类型定义 |
+| ⚠️ `FlawSchema` | title / quote / analysis | 坑点条目 |
+| 🔬 `SpecsCheckSchema` | param / claimed / actual | 参数透视 |
+| 💰 `PriceReferenceSchema` | source / price / date | 全网参考价 |
+| 📊 `SourceStatsSchema` | sampleSize / platforms | 数据溯源面板 |
+| 🚨 `ScamRoutineSchema` | routine / redFlag | 骗局话术拆解 |
+| ✅ `InspectionItemSchema` | step / checkPoint | 验机清单 |
+| 🔄 `AlternativeSchema` | name / reason | 替代品推荐 |
+| 💡 `ClinicRecommendationSchema` | product / reason | 选品推荐 |
+| 📝 `PitSubmissionSchema` | product / pitDescription | 用户避坑线索 |
+| 🚩 `ExposeSubmissionSchema` | title / evidence | 排雷曝光提交 |
+
+## 📊 七、项目成果
+
+| 维度 | 数值 |
+|:---|:---|
+| 🗺️ 前端页面 | 11 个 |
+| 🧩 React 组件 | 30 个（含 3 个 ECharts 图表组件） |
+| 🔌 API 端点 | 13 个 |
+| 🛡️ Zod Schema | 11 个（前端 LLM 输出校验） |
+| 🎯 支持 Intent | 5 种智能路由 |
+| 🧠 AI 模型 | DeepSeek (deepseek-chat) |
+| 🏪 价格数据源 | 4 源（京东/淘宝/苏宁/慢慢买） |
+| ☁️ 部署平台 | EdgeOne Pages（静态 + Functions） |
+| 🔐 认证系统 | 自建（localStorage + SHA-256），8 级 XP |
+| ☁️ CloudBase | NoSQL 3 集合 + 匿名认证，跨设备数据同步 |
+
+---
+
+## 🏆 八、总结
+
+本项目基于 **Next.js 14（静态导出）+ EdgeOne Pages Functions（边缘函数）** 构建了一套完整的 AI 驱动消费决策辅助系统。核心技术亮点包括：
+
+1. 🚀 **全静态前端 + 边缘函数后端**：Next.js `output: 'export'` 静态导出，CDN 全球加速；API 层由 Pages Functions 提供，零独立服务器成本
+2. 🧠 **DeepSeek 大模型驱动**：5 种 Intent 智能路由，自动适配单品/品类/选品/二手/对比分析
+3. 🔄 **异步 Job 架构**：提交 → 轮询模式，突破边缘函数执行时间限制
+4. 🛡️ **Zod 前端类型校验**：LLM 输出 Schema 统一校验，编译时 + 运行时双重保障
+5. 💰 **多源实时比价**：京东/苏宁/慢慢买/淘宝四源并行抓取，智能降级
+6. 🔐 **自建认证体系**：localStorage + SHA-256，8 级 XP 用户体系，零第三方认证依赖
+7. ☁️ **CloudBase 跨设备同步**：NoSQL 文档数据库存储用户资料/搜索历史/收藏，本地优先 + 云端异步同步，离线自动降级，管理后台实时查询用户数据
+
+> 🔮 未来可扩展方向：多模态识别（拍图识物）、持久化云数据库、社区 UGC 避坑知识图谱。
+
+---
+
+*👩‍💻 作者：王倩 | 📅 日期：2026 年 6 月 | 🎓 项目类型：结课项目 · 全栈独立开发*<br/>
+*🔗 源码地址：[github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website](https://github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website)*
