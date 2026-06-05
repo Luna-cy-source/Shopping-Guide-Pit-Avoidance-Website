@@ -106,9 +106,12 @@ export async function register(username: string, password: string, nickname?: st
   try {
     const name = nickname || username;
 
-    // 纯用户名注册（CloudBase 用户名密码认证标准方式）
-    // 文档: auth.signUp({ username, password }) 是 canonical 方式
+    // CloudBase signUp API 强制要求 email 或 phone 字段
+    // 用用户名生成唯一占位邮箱（格式固定可预测）
+    const placeholderEmail = `${username.toLowerCase()}@avp-internal.local`;
+
     const { error: signUpError } = await (auth as any).signUp({
+      email: placeholderEmail,
       username,
       password,
       user_metadata: {
@@ -153,11 +156,13 @@ export async function login(username: string, password: string): Promise<AuthRes
   }
 
   try {
-    // 纯用户名登录，与 signUp({ username, password }) 匹配
-    console.log('[登录] 尝试用户名登录:', username);
+    // 注册时用 email: {username}@avp-internal.local
+    // 登录必须用同样格式才能匹配到账户
+    const loginEmail = `${username.toLowerCase()}@avp-internal.local`;
+    console.log('[登录] 用email格式登录:', loginEmail, '原始输入:', username);
 
-    const result = await auth.signInWithPassword({
-      username,
+    const result = await (auth as any).signInWithPassword({
+      email: loginEmail,
       password,
     });
 
