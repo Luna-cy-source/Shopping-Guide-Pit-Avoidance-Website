@@ -108,9 +108,11 @@ export async function register(email: string, username: string, password: string
     const name = nickname || username;
 
     const { error: signUpError } = await (auth as any).signUp({
+      username,
       email,
       password,
       user_metadata: {
+        email,
         username,
         nickName: name,
         nickname: name,
@@ -146,15 +148,7 @@ export async function login(username: string, password: string): Promise<AuthRes
   }
 
   try {
-    // 先尝试用用户名登录，失败则尝试用内部邮箱
-    let result;
-    try {
-      result = await auth.signInWithPassword({ username, password });
-    } catch {
-      // 用户名登录失败 → 尝试用自动生成的邮箱
-      const autoEmail = `${username}@avp.internal`;
-      result = await auth.signInWithPassword({ email: autoEmail, password });
-    }
+    const result = await auth.signInWithPassword({ username, password });
 
     if (result.error) {
       const msg = String(result.error.message || '');
