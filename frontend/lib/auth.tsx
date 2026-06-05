@@ -103,39 +103,78 @@ export async function register(username: string, password: string, nickname?: st
   if (username.length > 20) return { success: false, error: '用户名最多20个字符' };
   if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
 
+  const name = nickname || username;
+  // v3 SDK signUp 强制要求 email 或 phone
+  const placeholderEmail = `${username.toLowerCase()}@pit-avoidance.app`;
+
   try {
-    const name = nickname || username;
-
-    // v3 SDK signUp 强制要求 email 或 phone 字段
-    // 用用户名生成唯一占位邮箱（使用真实域名格式通过校验）
-    // 注册后登录时用 username 匹配即可（usernamePassword 已启用）
-    const placeholderEmail = `${username.toLowerCase()}@pit-avoidance.app`;
-
-    const { error: signUpError } = await auth.signUp({
-      email: placeholderEmail,
-      username,
-      password,
-    });
-
-    if (signUpError) {
-      const msg = String(signUpError.message || '');
-      // 输出完整错误对象到控制台方便调试
-      console.error('[注册失败-signUpError] 原始错误:', JSON.stringify(signUpError));
-      if (msg.includes('已存在') || msg.includes('already') || msg.includes('exist') || msg.includes('taken')) {
-        return { success: false, error: `[SIGNUP-EXIST] 用户名已被注册: ${msg}` };
+    // === 尝试1: 纯用户名注册（文档标准方式）===
+    console.log('[注册] 尝试1: 纯用户名模式 signUp({username,password})');
+    let result = await auth.signUp({ username, password });
+    
+    if (result.error) {
+      console.log('[注册] 尝试1失败:', JSON.stringify(result.error));
+      
+      // === 尝试2: 带 email 字段注册（v3 SDK 强制要求）===
+      if (String(result.error.message || '').includes('email') || String(result.error.message || '').includes('phone')) {
+        console.log('[注册] 尝试2: 带email字段 signUp({email,username,password})');
+        result = await (auth as any).signUp({ email: placeholderEmail, username, password });
       }
-      // 返回详细错误信息（包含原始消息）
-      return { success: false, error: `[SIGNUP-FAIL] ${msg || '未知错误'}` };
+      
+      if (result.error) {
+        const msg = String(result.error.message || '');
+        console.error('[注册全部失败]', msg);
+        if (msg.includes('已存在') || msg.includes('already') || msg.includes('exist') || msg.includes('taken')) {
+          return { success: false, error: `[SIGNUP-EXIST] 用户名已被注册: ${msg}` };
+        }
+        return { success: false, error: `[SIGNUP-FAIL] ${msg || '未知错误'}` };
+      }
     }
 
-    // 注册成功！不自动登录（CloudBase signInWithPassword 与 signUp 的凭据格式不同）
-    // 引导用户到登录页手动登录一次即可
-    console.log('[注册成功] 用户:', username);
+    // 注册成功 → 立即尝试自动登录
+    console.log('[注册成功] 尝试自动登录...');
+    const loginResult = await autoSignIn(auth, username, password, placeholderEmail);
+    
+    if (loginResult.success && loginResult.user) {
+      console.log('[注册+自动登录成功] 用户:', username);
+      return { success: true, user: loginResult.user };
+    }
+    
+    // 注册成功但自动登录失败，返回注册成功让用户手动登录
+    console.log('[注册成功] 自动登录失败，引导手动登录');
     return { success: true, user: undefined };
+
   } catch (e: any) {
     console.error('[注册异常-catch]', e);
     return { success: false, error: `[SIGNUP-EXCEPTION] ${e?.message || '网络异常'}` };
   }
+}
+
+// 自动登录辅助函数：依次尝试多种模式
+async function autoSignIn(auth: any, username: string, password: string, email: string): Promise<AuthResult> {
+  const modes = [
+    { label: '纯username', params: { username, password } },
+    { label: 'email格式', params: { email, password } },
+    { label: '纯email(无username)', params: { email, password } },
+  ];
+
+  for (const mode of modes) {
+    console.log(`[自动登录] 尝试 ${mode.label}:`, JSON.stringify(mode.params));
+    try {
+      const result = await auth.signInWithPassword(mode.params);
+      if (!result.error && result.data?.user) {
+        const user = mapCloudUser(result.data.user);
+        cacheUserInfo(user);
+        console.log(`[自动登录] ${mode.label} 成功!`);
+        return { success: true, user };
+      }
+      console.log(`[自动登录] ${mode.label} 失败:`, result.error?.message || '(无error)');
+    } catch (e: any) {
+      console.log(`[自动登录] ${mode.label} 异常:`, e?.message);
+    }
+  }
+
+  return { success: false, error: '所有登录模式均失败' };
 }
 
 // ============================================
@@ -148,35 +187,39 @@ export async function login(username: string, password: string): Promise<AuthRes
     return { success: false, error: '请输入用户名和密码' };
   }
 
-  try {
-    // 注册时用 signUp({ email: "{username}@pit-avoidance.app", username, password })
-    // v3 SDK 以 email 为主标识符，登录必须用同样格式才能匹配
-    const loginEmail = `${username.toLowerCase()}@pit-avoidance.app`;
-    console.log('[登录] 用email匹配:', loginEmail, '原始输入:', username);
+  const loginEmail = `${username.toLowerCase()}@pit-avoidance.app`;
 
-    const result = await auth.signInWithPassword({
-      email: loginEmail,
-      password,
-    });
+  // 依次尝试多种登录模式
+  const modes = [
+    { label: 'email模式', params: { email: loginEmail, password } },
+    { label: 'username模式', params: { username, password } },
+  ];
 
-    if (result.error) {
-      const msg = String(result.error.message || '');
-      console.error('[登录失败]', JSON.stringify(result.error));
-      if (msg.includes('密码') || msg.includes('password') || msg.includes('credential')) {
-        return { success: false, error: '用户名或密码错误' };
+  for (const mode of modes) {
+    console.log(`[登录] 尝试 ${mode.label}:`, JSON.stringify(mode.params));
+    try {
+      const result = await auth.signInWithPassword(mode.params);
+      
+      if (result.error) {
+        const msg = String(result.error.message || '');
+        console.log(`[登录] ${mode.label} 失败:`, msg);
+        // 继续尝试下一种模式
+        continue;
       }
-      return { success: false, error: `[LOGIN-FAIL] ${msg}` };
+
+      // 登录成功
+      const user = mapCloudUser(result.data.user);
+      cacheUserInfo(user);
+      console.log(`[登录成功] ${mode.label}! 用户:`, user.username);
+      return { success: true, user };
+      
+    } catch (e: any) {
+      console.log(`[登录] ${mode.label} 异常:`, e?.message);
     }
-
-    const user = mapCloudUser(result.data.user);
-    cacheUserInfo(user);
-
-    console.log('[登录成功] 用户:', user.username);
-    return { success: true, user };
-  } catch (e: any) {
-    console.error('[登录异常]', e);
-    return { success: false, error: `[LOGIN-EXCEPTION] ${e?.message || '登录异常'}` };
   }
+
+  // 所有模式都失败
+  return { success: false, error: '用户名或密码错误' };
 }
 
 // ============================================
