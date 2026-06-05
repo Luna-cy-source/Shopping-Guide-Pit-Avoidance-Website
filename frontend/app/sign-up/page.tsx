@@ -50,8 +50,8 @@ export default function SignUpPage() {
         nickname.trim() || undefined,
       );
       if (result.success) {
-        router.push('/');
-        router.refresh();
+        // 注册成功 → 跳转登录页
+        router.push('/login?registered=1');
       } else {
         setError(result.error || '注册失败');
       }

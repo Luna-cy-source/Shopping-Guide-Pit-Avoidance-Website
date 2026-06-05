@@ -135,9 +135,11 @@ export async function register(username: string, password: string, nickname?: st
       return { success: false, error: msg || '注册失败：用户名或密码不满足要求' };
     }
 
-    // 注册成功后自动登录
-    return await login(username, password);
+    // 注册成功！不自动登录（CloudBase signInWithPassword 与 signUp 的凭据格式不同）
+    // 引导用户到登录页手动登录一次即可
+    return { success: true, user: null };
   } catch (e: any) {
+    console.error('[注册异常]', e);
     return { success: false, error: e?.message || '网络异常，请稍后重试' };
   }
 }
