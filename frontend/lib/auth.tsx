@@ -106,8 +106,12 @@ export async function register(username: string, password: string, nickname?: st
   try {
     const name = nickname || username;
 
-    // 使用用户名注册（EmailLogin 未启用，UsernameLogin 已启用）
+    // CloudBase signUp API 强制要求 email 或 phone 字段
+    // 内部自动生成占位邮箱（用户不可见），登录仍用用户名+密码
+    const placeholderEmail = `${username.toLowerCase()}@avp-internal.local`;
+
     const { error: signUpError } = await (auth as any).signUp({
+      email: placeholderEmail,
       username,
       password,
       user_metadata: {
