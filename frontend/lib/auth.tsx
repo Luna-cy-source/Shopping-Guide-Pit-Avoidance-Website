@@ -106,9 +106,13 @@ export async function register(username: string, password: string, nickname?: st
   try {
     const name = nickname || username;
 
-    // 纯用户名注册（usernamePassword 已启用，文档标准方式）
-    // 不传 email/phone 避免触发邮箱验证模式（邮箱验证码也已启用时会校验email格式）
+    // v3 SDK signUp 强制要求 email 或 phone 字段
+    // 用用户名生成唯一占位邮箱（使用真实域名格式通过校验）
+    // 注册后登录时用 username 匹配即可（usernamePassword 已启用）
+    const placeholderEmail = `${username.toLowerCase()}@pit-avoidance.app`;
+
     const { error: signUpError } = await auth.signUp({
+      email: placeholderEmail,
       username,
       password,
     });
