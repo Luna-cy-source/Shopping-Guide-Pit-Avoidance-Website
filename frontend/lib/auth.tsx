@@ -108,7 +108,7 @@ export async function register(username: string, password: string, nickname?: st
 
     // 纯用户名注册（CloudBase 用户名密码认证标准方式）
     // 文档: auth.signUp({ username, password }) 是 canonical 方式
-    const { error: signUpError } = await auth.signUp({
+    const { error: signUpError } = await (auth as any).signUp({
       username,
       password,
       user_metadata: {
