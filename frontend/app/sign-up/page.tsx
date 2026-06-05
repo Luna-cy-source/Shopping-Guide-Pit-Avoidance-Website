@@ -51,7 +51,7 @@ export default function SignUpPage() {
       );
       if (result.success) {
         // 注册成功 → 跳转登录页
-        router.push('/login?registered=1');
+        router.push('/sign-in?registered=1');
       } else {
         setError(result.error || '注册失败');
       }
