@@ -104,9 +104,9 @@ export async function register(username: string, password: string, nickname?: st
   if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
 
   try {
-    // 调用 CloudBase signUp（传 username + password + nickname 元数据）
+    // 调用 CloudBase signUp
     const name = nickname || username;
-    const { error: signUpError } = await auth.signUp({
+    const { error: signUpError } = await (auth as any).signUp({
       username,
       password,
       user_metadata: {
