@@ -108,8 +108,8 @@ function AchievementWall({ progress }: { progress: UserProgress | null }) {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
-  const { history, hasHistory, clearHistory, removeHistoryItem } = useSearchHistory();
-  const { bookmarks, hasBookmarks, removeBookmark, getBookmarksByType } = useBookmarks();
+  const { history, hasHistory, clearHistory, removeHistoryItem } = useSearchHistory(user?.uid);
+  const { bookmarks, hasBookmarks, removeBookmark, getBookmarksByType } = useBookmarks(user?.uid);
   const [viewingBookmark, setViewingBookmark] = useState<BookmarkItem | null>(null);
   const [progress, setProgress] = useState<UserProgress | null>(null);
 

@@ -668,7 +668,7 @@ function ExposePageContent({
 // ============================================
 function ExposePageWithAuth() {
   const { isAuthenticated, user } = useAuth();
-  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.username || null} />;
+  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.uid || null} />;
 }
 
 // ============================================
@@ -676,5 +676,5 @@ function ExposePageWithAuth() {
 // ============================================
 export default function ExposePage() {
   const { isAuthenticated, user } = useAuth();
-  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.username || null} />;
+  return <ExposePageContent isSignedIn={isAuthenticated} userId={user?.uid || null} />;
 }

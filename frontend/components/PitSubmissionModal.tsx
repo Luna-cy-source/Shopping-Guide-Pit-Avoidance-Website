@@ -15,7 +15,7 @@ interface Props {
 
 function PitModalWithAuth({ productName }: Props) {
   const { isAuthenticated, user } = useAuth();
-  const userId = user?.username || null;
+  const userId = user?.uid || null;
   const isSignedIn = isAuthenticated;
 
   const [open, setOpen] = useState(false);

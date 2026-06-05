@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSearchHistory } from '../hooks/useSearchHistory';
 import { useBookmarks, type BookmarkItem } from '../hooks/useBookmarks';
+import { useAuth } from '../hooks/useAuth';
 import { apiUrl } from '../lib/api';
 import BroadcastTicker from '../components/BroadcastTicker';
 import BookmarkDetailModal from '../components/BookmarkDetailModal';
@@ -200,6 +201,7 @@ function mapExposePost(post: {
 
 export default function HomePage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [, setTrendingKeywords] = useState<string[]>([]);
@@ -216,8 +218,8 @@ export default function HomePage() {
   }> | null>(null);
   const [exposeLoading, setExposeLoading] = useState(true);
 
-  const { mounted: histMounted, addHistory, history } = useSearchHistory();
-  const { bookmarks, mounted: bmMounted, removeBookmark, clearBookmarks, hasBookmarks } = useBookmarks();
+  const { mounted: histMounted, addHistory, history } = useSearchHistory(user?.uid);
+  const { bookmarks, mounted: bmMounted, removeBookmark, clearBookmarks, hasBookmarks } = useBookmarks(user?.uid);
   const clientReady = histMounted && bmMounted;
 
   /* ---- 获取热搜 ---- */

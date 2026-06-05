@@ -1,67 +1,48 @@
 /**
- * 自定义认证系统 — localStorage + CloudBase 云端同步
- * 支持注册、登录、登出，密码 SHA-256 哈希存储
- * 数据优先读写 localStorage，后台异步同步到 CloudBase
+ * 认证系统 — 基于 CloudBase 真实用户名密码认证
+ *
+ * 改造前：localStorage 存用户名/密码哈希 → 换设备即丢失
+ * 改造后：CloudBase 云端认证 → 任何设备登录都是同一个账号
+ *
+ * 数据存储策略：
+ *   - 认证状态：CloudBase Auth（云端 session，自动刷新）
+ *   - 用户资料：CloudBase 用户 metadata（昵称、头像等）
+ *   - 收藏/历史：localStorage（快速） + CloudBase NoSQL（跨设备同步）
  */
 
-import {
-  initCloudBase,
-  isCloudReady,
-  saveUserProfile,
-  loadUserProfile,
-} from './cloudbase-storage';
+import { getAuth } from './cloudbase-client';
 
+// ============================================
+// 类型
+// ============================================
 export interface UserInfo {
-  username: string;
-  nickname: string;
-  avatar: string;       // emoji 头像
-  createdAt: number;
+  uid: string;          // CloudBase 唯一用户 ID（全局唯一，不变）
+  username: string;     // 登录用户名
+  nickname: string;     // 显示昵称
+  avatar: string;       // 头像 (emoji)
+  createdAt: number;    // 注册时间戳
   xp: number;           // 经验值
-  level: number;
+  level: number;        // 等级
 }
 
-interface AuthSession {
-  user: UserInfo;
-  token: string;        // 简单 token（username + timestamp 的 hash）
-  expiresAt: number;
+export interface AuthResult {
+  success: boolean;
+  error?: string;
+  user?: UserInfo;
 }
-
-const USERS_KEY = 'avp_users';
-const SESSION_KEY = 'avp_session';
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7天
 
 // ============================================
-// 密码工具
+// 工具函数
 // ============================================
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + '_avp_salt_2024');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function generateToken(username: string): string {
-  const raw = `${username}:${Date.now()}:avp_secret`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    const char = raw.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(16, '0');
-}
-
-// Avatar emoji list (unicode escapes to avoid encoding issues)
 const AVATARS: string[] = [
-  String.fromCodePoint(0x1F98A), // fox
-  String.fromCodePoint(0x1F431), // cat
-  String.fromCodePoint(0x1F43C), // panda
-  String.fromCodePoint(0x1F428), // koala
-  String.fromCodePoint(0x1F481), // lion
-  String.fromCodePoint(0x1F42F), // tiger
-  String.fromCodePoint(0x1F438), // frog
-  String.fromCodePoint(0x1F989), // owl
+  String.fromCodePoint(0x1F98A),  // 🦊 fox
+  String.fromCodePoint(0x1F431),  // 🐱 cat
+  String.fromCodePoint(0x1F43C),  // 🐼 panda
+  String.fromCodePoint(0x1F428),  // 🐨 koala
+  String.fromCodePoint(0x1F481),  // 🦁 lion
+  String.fromCodePoint(0x1F42F),  // 🐯 tiger
+  String.fromCodePoint(0x1F438),  // 🐸 frog
+  String.fromCodePoint(0x1F989),  // 🦉 owl
 ];
 
 function randomAvatar(): string {
@@ -79,230 +60,148 @@ function calcLevel(xp: number): number {
   return 1;
 }
 
-// ============================================
-// 用户存储操作（localStorage）
-// ============================================
-function getUsers(): Record<string, { passwordHash: string; user: UserInfo }> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(USERS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+/** 将 CloudBase 用户对象映射为我们的 UserInfo */
+function mapCloudUser(cloudUser: any): UserInfo {
+  const meta = cloudUser.user_metadata || {};
+  return {
+    uid: cloudUser.id,
+    username: meta.username || '',
+    nickname: meta.nickName || meta.nickname || meta.username || '新用户',
+    avatar: meta.avatarUrl || randomAvatar(),
+    createdAt: cloudUser.created_at ? new Date(cloudUser.created_at).getTime() : Date.now(),
+    xp: parseInt(meta.xp || '20', 10),
+    level: parseInt(meta.level || '1', 10),
+  };
 }
 
-function saveUsers(users: Record<string, { passwordHash: string; user: UserInfo }>): void {
+// ============================================
+// 本地缓存（用于同步读取，避免 async 等待）
+// ============================================
+const CACHE_KEY_USER = 'avp_user_cache';
+const CACHE_KEY_LOGGED_IN = 'avp_logged_in';
+
+/** 缓存用户信息到 localStorage */
+export function cacheUserInfo(user: UserInfo | null): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  if (user) {
+    try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(user)); } catch {}
+    localStorage.setItem(CACHE_KEY_LOGGED_IN, 'true');
+  } else {
+    localStorage.removeItem(CACHE_KEY_USER);
+    localStorage.removeItem(CACHE_KEY_LOGGED_IN);
+  }
 }
 
 // ============================================
 // 注册
 // ============================================
-export interface AuthResult {
-  success: boolean;
-  error?: string;
-  user?: UserInfo;
-}
-
 export async function register(username: string, password: string, nickname?: string): Promise<AuthResult> {
+  const auth = getAuth();
+
   // 基础校验
-  if (!username || username.length < 2) {
-    return { success: false, error: '用户名至少2个字符' };
-  }
-  if (username.length > 20) {
-    return { success: false, error: '用户名最多20个字符' };
-  }
-  if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(username)) {
-    return { success: false, error: '用户名只能包含字母、数字、下划线和中文' };
-  }
-  if (!password || password.length < 4) {
-    return { success: false, error: '密码至少4个字符' };
-  }
-  if (password.length > 50) {
-    return { success: false, error: '密码最多50个字符' };
-  }
+  if (!username || username.length < 2) return { success: false, error: '用户名至少2个字符' };
+  if (username.length > 20) return { success: false, error: '用户名最多20个字符' };
+  if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
 
-  const users = getUsers();
-  const key = username.toLowerCase();
+  try {
+    // 调用 CloudBase signUp（只传 username + password）
+    const { error: signUpError } = await auth.signUp({
+      username,
+      password,
+    });
 
-  if (users[key]) {
-    return { success: false, error: '用户名已存在' };
-  }
-
-  const passwordHash = await hashPassword(password);
-  const now = Date.now();
-
-  const user: UserInfo = {
-    username,
-    nickname: nickname || username,
-    avatar: randomAvatar(),
-    createdAt: now,
-    xp: 20, // 注册赠送20经验
-    level: 1,
-  };
-
-  users[key] = { passwordHash, user };
-  saveUsers(users);
-
-  // ★ 同步到 CloudBase（后台异步，不阻塞）
-  initCloudBase().then(() => {
-    if (isCloudReady()) {
-      saveUserProfile({ ...user, passwordHash }).catch(() => {});
+    if (signUpError) {
+      const msg = String(signUpError.message || '');
+      if (msg.includes('已存在') || msg.includes('already') || msg.includes('exist') || msg.includes('taken')) {
+        return { success: false, error: '用户名已被注册' };
+      }
+      return { success: false, error: `注册失败: ${msg}` };
     }
-  });
 
-  // 自动登录
-  const session: AuthSession = {
-    user,
-    token: generateToken(username),
-    expiresAt: now + SESSION_DURATION,
-  };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-
-  return { success: true, user };
+    // 注册成功后自动登录
+    return await login(username, password);
+  } catch (e: any) {
+    return { success: false, error: e?.message || '网络异常，请稍后重试' };
+  }
 }
 
 // ============================================
 // 登录
 // ============================================
 export async function login(username: string, password: string): Promise<AuthResult> {
+  const auth = getAuth();
+
   if (!username || !password) {
     return { success: false, error: '请输入用户名和密码' };
   }
 
-  const users = getUsers();
-  const key = username.toLowerCase();
-  const record = users[key];
+  try {
+    const { data, error } = await auth.signInWithPassword({ username, password });
 
-  if (!record) {
-    return { success: false, error: '用户名或密码错误' };
-  }
-
-  const passwordHash = await hashPassword(password);
-  if (passwordHash !== record.passwordHash) {
-    return { success: false, error: '用户名或密码错误' };
-  }
-
-  // 登录奖励经验
-  record.user.xp += 5;
-  record.user.level = calcLevel(record.user.xp);
-  saveUsers(users);
-
-  // ★ 同步到 CloudBase
-  initCloudBase().then(() => {
-    if (isCloudReady()) {
-      saveUserProfile({
-        username: record.user.username,
-        passwordHash: record.passwordHash,
-        nickname: record.user.nickname,
-        avatar: record.user.avatar,
-        createdAt: record.user.createdAt,
-        xp: record.user.xp,
-        level: record.user.level,
-      }).catch(() => {});
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('密码') || msg.includes('password') || msg.includes('credential')) {
+        return { success: false, error: '用户名或密码错误' };
+      }
+      return { success: false, error: `登录失败: ${msg}` };
     }
-  });
 
-  const session: AuthSession = {
-    user: record.user,
-    token: generateToken(username),
-    expiresAt: Date.now() + SESSION_DURATION,
-  };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    const user = mapCloudUser(data.user);
+    cacheUserInfo(user);
 
-  return { success: true, user: record.user };
+    return { success: true, user };
+  } catch (e: any) {
+    return { success: false, error: e?.message || '登录异常，请稍后重试' };
+  }
 }
 
 // ============================================
 // 登出
 // ============================================
-export function logout(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(SESSION_KEY);
+export async function logout(): Promise<void> {
+  const auth = getAuth();
+  try { await auth.signOut(); } catch {}
+  cacheUserInfo(null);
 }
 
 // ============================================
-// 获取当前会话
+// 获取当前会话（异步，从 CloudBase 拉取最新状态）
 // ============================================
-export function getCurrentSession(): AuthSession | null {
-  if (typeof window === 'undefined') return null;
+export async function getCurrentSessionAsync(): Promise<{ user: UserInfo } | null> {
+  const auth = getAuth();
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
+    const { data } = await auth.getSession();
 
-    const session: AuthSession = JSON.parse(raw);
+    if (!data?.session) return null;
 
-    // 检查过期
-    if (Date.now() > session.expiresAt) {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
+    // 排除匿名用户
+    if (data.session.user?.is_anonymous) return null;
 
-    // 同步最新的用户数据
-    const users = getUsers();
-    const key = session.user.username.toLowerCase();
-    if (users[key]?.user) {
-      session.user = users[key].user;
-    }
-
-    return session;
+    const user = mapCloudUser(data.session.user);
+    cacheUserInfo(user);
+    return { user };
   } catch {
     return null;
   }
 }
 
 // ============================================
-// 检查是否已登录
+// 同步接口（从本地缓存快速读取）
 // ============================================
+
+/** 是否已登录（同步，用于渲染判断） */
 export function isAuthenticated(): boolean {
-  return getCurrentSession() !== null;
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(CACHE_KEY_LOGGED_IN) === 'true';
 }
 
-// ============================================
-// 获取当前用户
-// ============================================
+/** 获取当前用户（同步，从缓存） */
 export function getCurrentUser(): UserInfo | null {
-  const session = getCurrentSession();
-  return session?.user || null;
-}
-
-// ============================================
-// 从云端拉取用户数据（换设备登录时使用）
-// ============================================
-export async function pullUserFromCloud(username: string, passwordHash: string): Promise<AuthResult> {
-  await initCloudBase();
-  if (!isCloudReady()) return { success: false, error: '云端暂不可用' };
-
+  if (typeof window === 'undefined') return null;
   try {
-    const profile = await loadUserProfile(username);
-    if (!profile) return { success: false, error: '云端无此账号，请先在本机注册后同步' };
-    if (profile.passwordHash !== passwordHash) return { success: false, error: '密码不匹配' };
-
-    // 恢复本地数据
-    const users = getUsers();
-    const key = username.toLowerCase();
-    const user: UserInfo = {
-      username: profile.username,
-      nickname: profile.nickname,
-      avatar: profile.avatar,
-      createdAt: profile.createdAt,
-      xp: profile.xp,
-      level: profile.level,
-    };
-    users[key] = { passwordHash, user };
-    saveUsers(users);
-
-    const session: AuthSession = {
-      user,
-      token: generateToken(username),
-      expiresAt: Date.now() + SESSION_DURATION,
-    };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-
-    return { success: true, user };
-  } catch (e) {
-    return { success: false, error: '云端同步失败' };
+    const raw = localStorage.getItem(CACHE_KEY_USER);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
 }

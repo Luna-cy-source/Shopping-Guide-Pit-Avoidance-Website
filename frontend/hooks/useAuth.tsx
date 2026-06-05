@@ -1,5 +1,8 @@
 /**
- * useAuth Hook — React 状态管理 + 自定义认证系统
+ * useAuth Hook — React 状态管理 + CloudBase 真实认证
+ *
+ * 改造前：从 localStorage 恢复会话（假登录）
+ * 改造后：从 CloudBase Auth getSession() 恢复真实登录态
  */
 'use client';
 
@@ -8,14 +11,14 @@ import {
   register as registerUser,
   login as loginUser,
   logout as logoutUser,
-  getCurrentSession,
+  getCurrentSessionAsync,
   getCurrentUser,
   isAuthenticated as checkAuth,
+  cacheUserInfo,
   type UserInfo,
   type AuthResult,
 } from '../lib/auth';
 
-// Re-export types
 export type { AuthResult, UserInfo } from '../lib/auth';
 
 // ============================================
@@ -52,17 +55,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 初始化：从 localStorage 恢复会话
+  // 初始化：先从本地缓存快速恢复，再异步验证 CloudBase session
   useEffect(() => {
-    try {
-      const session = getCurrentSession();
-      if (session?.user) {
-        setUser(session.user);
+    let cancelled = false;
+
+    const initAuth = async () => {
+      try {
+        // 1. 先从缓存读取（立即渲染 UI）
+        const cached = getCurrentUser();
+        if (cached && !cancelled) {
+          setUser(cached);
+        }
+
+        // 2. 再从 CloudBase 验证真实登录状态
+        const session = await getCurrentSessionAsync();
+        if (!cancelled) {
+          if (session?.user) {
+            setUser(session.user);
+          } else {
+            // CloudBase 无有效 session → 清除本地缓存
+            setUser(null);
+            if (!cached) cacheUserInfo(null);
+          }
+        }
+      } catch {
+        // 出错时保留缓存数据作为降级
       }
-    } catch {
-      // 忽略解析错误
-    }
-    setIsLoading(false);
+
+      if (!cancelled) setIsLoading(false);
+    };
+
+    initAuth();
+
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async (username: string, password: string): Promise<AuthResult> => {
@@ -81,8 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, []);
 
-  const logout = useCallback(() => {
-    logoutUser();
+  const logout = useCallback(async () => {
+    await logoutUser();
     setUser(null);
   }, []);
 
