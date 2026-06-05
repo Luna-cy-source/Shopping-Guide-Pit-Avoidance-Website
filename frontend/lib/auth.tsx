@@ -162,9 +162,11 @@ export async function login(username: string, password: string): Promise<AuthRes
     const result = await auth.signInWithPassword({ email, password });
 
     if (result.error) {
-      const msg = String(result.error.message || '');
-      console.error('[登录失败]', msg);
-      return { success: false, error: `[LOGIN-FAIL] ${msg || '用户名或密码错误'}` };
+      const raw = JSON.stringify(result.error);
+      const msg = String(result.error.message || result.error.code || '');
+      console.error('[登录失败] 原始:', raw);
+      // 显示完整错误信息到UI方便调试
+      return { success: false, error: msg || `登录失败(详情: ${raw})` };
     }
 
     const user = mapCloudUser(result.data.user);
