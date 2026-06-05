@@ -104,10 +104,12 @@ export async function register(username: string, password: string, nickname?: st
   if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
 
   try {
-    // 调用 CloudBase signUp
     const name = nickname || username;
+    // CloudBase signUp 要求必须有 email 或 phone，这里用用户名自动生成一个内部邮箱
+    const autoEmail = `${username}@avp.internal`;
+
     const { error: signUpError } = await (auth as any).signUp({
-      username,
+      email: autoEmail,
       password,
       user_metadata: {
         username,
@@ -145,17 +147,25 @@ export async function login(username: string, password: string): Promise<AuthRes
   }
 
   try {
-    const { data, error } = await auth.signInWithPassword({ username, password });
+    // 先尝试用用户名登录，失败则尝试用内部邮箱
+    let result;
+    try {
+      result = await auth.signInWithPassword({ username, password });
+    } catch {
+      // 用户名登录失败 → 尝试用自动生成的邮箱
+      const autoEmail = `${username}@avp.internal`;
+      result = await auth.signInWithPassword({ email: autoEmail, password });
+    }
 
-    if (error) {
-      const msg = String(error.message || '');
+    if (result.error) {
+      const msg = String(result.error.message || '');
       if (msg.includes('密码') || msg.includes('password') || msg.includes('credential')) {
         return { success: false, error: '用户名或密码错误' };
       }
       return { success: false, error: `登录失败: ${msg}` };
     }
 
-    const user = mapCloudUser(data.user);
+    const user = mapCloudUser(result.data.user);
     cacheUserInfo(user);
 
     return { success: true, user };

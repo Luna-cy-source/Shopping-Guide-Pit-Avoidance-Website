@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
+import AuthButtons from './AuthButtons';
 
 // =====================================================
 // 全局顶部导航栏 — 极简实验室风格
@@ -114,23 +115,8 @@ export default function Header() {
             👤 个人主页
           </Link>
 
-          {/* 登录 / 用户头像 */}
-          {isAuthenticated && user ? (
-            <Link
-              href="/profile"
-              className="flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 pl-1 pr-2.5 py-0.5 shadow-sm transition-all hover:border-purple-300 hover:shadow-md"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs">{user.avatar}</span>
-              <span className="max-w-[60px] truncate text-[11px] font-medium text-purple-700">{user.nickname || user.username}</span>
-            </Link>
-          ) : (
-            <Link
-              href="/sign-in"
-              className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95 sm:px-4"
-            >
-              登录 / 注册
-            </Link>
-          )}
+          {/* 登录 / 用户头像 + 退出按钮 */}
+          <AuthButtons />
         </div>
       </div>
     </header>
