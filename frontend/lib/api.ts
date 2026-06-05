@@ -1,19 +1,15 @@
 /**
- * API 工具 — 异步 Job 模式
+ * API 工具 — CloudBase 云函数模式
  *
  * 流程：
- *   1. POST /api/search → 立即返回 { jobId, status: 'done'|'processing' }
- *   2. 如果 status='processing' → 每 2s 轮询 GET /api/search/result?jobId=xxx
- *   3. 直到 status='done' → 取出 data
+ *   1. callFunction('aiSearch', { query }) → 同步返回 AI 分析结果
+ *   2. 无需轮询，直接展示数据
  */
 
-// CloudBase 静态托管无 Functions 代理，直连 Worker
-const API_BASE = 'https://ai-avoid-pit.793309184.workers.dev';
+import { callFunction } from './cloudbase-client';
 
 /**
- * 提交搜索，返回 Job 信息
- * 如果缓存命中 → status='done'，直接有 data
- * 如果缓存未命中 → status='processing'，后台处理中
+ * 提交搜索，返回 AI 分析结果（同步）
  */
 export async function submitSearch(query: string): Promise<{
   jobId: string;
@@ -21,23 +17,42 @@ export async function submitSearch(query: string): Promise<{
   data?: any;
   error?: string;
 }> {
-  const res = await fetch(`${API_BASE}/api/search`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
+  console.log('[api] 调用 aiSearch 云函数 | query=', query);
 
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 200)}`);
+  try {
+    const result = await callFunction('aiSearch', { query });
+
+    // 云函数直接返回分析数据
+    if (result && result.code === undefined) {
+      // 正常结果
+      return {
+        jobId: 'cloudbase-direct',
+        status: 'done',
+        data: result,
+      };
+    }
+
+    // 云函数返回了错误格式
+    if (result && result.error) {
+      return { jobId: '', status: 'error', error: String(result.error) };
+    }
+
+    if (result && result.statusCode && result.statusCode >= 400) {
+      const msg = result.body ? JSON.parse(result.body).message || '' : '';
+      return { jobId: '', status: 'error', error: msg || `HTTP ${result.statusCode}` };
+    }
+
+    // 兜底：把原始结果作为数据
+    return { jobId: 'cloudbase-direct', status: 'done', data: result };
+  } catch (err: any) {
+    console.error('[api] aiSearch 调用失败:', err);
+    throw new Error(err?.message || 'AI 分析请求失败');
   }
-
-  return res.json();
 }
 
 /**
- * 轮询 Job 结果
- * @returns { status, data?, error? }
+ * 轮询 Job 结果（兼容接口，云函数模式下不需要）
+ * @returns 立即返回 done 状态
  */
 export async function pollResult(jobId: string): Promise<{
   jobId: string;
@@ -46,14 +61,8 @@ export async function pollResult(jobId: string): Promise<{
   error?: string;
   hint?: string;
 }> {
-  const res = await fetch(`${API_BASE}/api/search/result?jobId=${encodeURIComponent(jobId)}`);
-
-  if (!res.ok) {
-    // 轮询失败不抛异常，返回 processing 状态
-    return { jobId, status: 'processing' };
-  }
-
-  return res.json();
+  // 云函数同步模式，不需要轮询
+  return { jobId, status: 'not_found' as const };
 }
 
 /**

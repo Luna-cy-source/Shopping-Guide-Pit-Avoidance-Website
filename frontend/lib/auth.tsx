@@ -11,6 +11,7 @@
  */
 
 import { getAuth, callFunction } from './cloudbase-client';
+import { saveUserProfile as saveProfileToCloud, initCloudBase } from './cloudbase-storage';
 
 // ============================================
 // 类型
@@ -93,6 +94,26 @@ export function cacheUserInfo(user: UserInfo | null): void {
 }
 
 // ============================================
+// 用户资料同步到 CloudBase NoSQL（异步，不阻塞主流程）
+// ============================================
+async function syncUserProfile(user: UserInfo): Promise<void> {
+  try {
+    await initCloudBase();
+    await saveProfileToCloud({
+      username: user.username,
+      nickname: user.nickname,
+      avatar: user.avatar,
+      xp: user.xp,
+      level: user.level,
+    });
+    console.log('[用户资料] 已同步到 NoSQL:', user.username);
+  } catch (e) {
+    // 非关键操作，失败不影响登录
+    console.warn('[用户资料] 同步失败（非致命）:', e);
+  }
+}
+
+// ============================================
 // 注册
 // ============================================
 export async function register(username: string, password: string, nickname?: string): Promise<AuthResult> {
@@ -158,6 +179,10 @@ export async function login(username: string, password: string): Promise<AuthRes
       const user = mapCloudUser(result.data.user);
       cacheUserInfo(user);
       console.log(`[登录成功] ${mode.label}! 用户:`, user.username);
+
+      // 异步同步用户资料到 CloudBase NoSQL（不阻塞登录流程）
+      syncUserProfile(user).catch(() => {});
+
       return { success: true, user };
 
     } catch (e: any) {
