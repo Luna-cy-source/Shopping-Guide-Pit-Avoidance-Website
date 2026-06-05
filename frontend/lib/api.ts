@@ -7,7 +7,8 @@
  *   3. 直到 status='done' → 取出 data
  */
 
-const API_BASE = ''; // 同源 Pages 代理
+// CloudBase 静态托管无 Functions 代理，直连 Worker
+const API_BASE = 'https://ai-avoid-pit.793309184.workers.dev';
 
 /**
  * 提交搜索，返回 Job 信息
