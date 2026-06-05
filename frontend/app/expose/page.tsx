@@ -422,11 +422,11 @@ function ExposeFeed() {
           {DEMO_POSTS.map((post) => (
             <div
               key={post.id}
-              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300"
+              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-200"
             >
               {/* 产品名 + 时间 */}
               <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="inline-flex max-w-[70%] truncate rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                <span className="inline-flex max-w-[70%] truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
                   {post.productName}
                 </span>
                 <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
@@ -534,11 +534,11 @@ function ExposeFeed() {
           {posts.map((post) => (
             <div
               key={post.id}
-              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300"
+              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-200"
             >
               {/* 产品名 + 时间 */}
               <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="inline-flex max-w-[70%] truncate rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                <span className="inline-flex max-w-[70%] truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
                   {post.productName}
                 </span>
                 <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
