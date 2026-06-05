@@ -9,6 +9,8 @@ import {
 } from './schema';
 import { getOrDownloadImage, downloadAndCacheImage } from './image-cache';
 import { retrieveContext } from './ai-service';
+import { recallSummary } from './recall_data';
+import { reviewSummary } from './review_data';
 
 // ============================================
 // Hono 实例初始化 + CORS 中间件
@@ -1327,6 +1329,26 @@ app.get('/api/blacklist', (c) => c.json({ items: [
   { id: 3, productName: '奥克斯折叠洗衣机', score: 22, fatalFlaw: '密封圈极易发霉，洗一次衣服机器先臭了', tags: ['品控不稳'], date: '2026-04' },
   { id: 4, productName: '荣事达无叶风扇', score: 15, fatalFlaw: '风力不到普通台扇的1/3，噪音翻倍', tags: ['参数虚标'], date: '2026-05' },
 ], updatedAt: '2026-05-28' }));
+
+// ============================================
+// GET /api/datasets/recalls — 产品召回数据集摘要
+// ============================================
+app.get('/api/datasets/recalls', (c) => {
+  return c.json(recallSummary, 200, {
+    'Cache-Control': 'public, max-age=3600',
+    'Access-Control-Allow-Origin': '*',
+  });
+});
+
+// ============================================
+// GET /api/datasets/reviews — 虚假评论数据集摘要
+// ============================================
+app.get('/api/datasets/reviews', (c) => {
+  return c.json(reviewSummary, 200, {
+    'Cache-Control': 'public, max-age=3600',
+    'Access-Control-Allow-Origin': '*',
+  });
+});
 
 // ============================================
 // 404

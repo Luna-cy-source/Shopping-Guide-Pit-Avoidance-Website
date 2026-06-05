@@ -10,6 +10,7 @@ import SourceStatsPanel from './SourceStatsPanel';
 import SpecsCheckTable from './SpecsCheckTable';
 import VerifySearch from './VerifySearch';
 import CommerceBanner from './CommerceBanner';
+import DatasetInsight from './DatasetInsight';
 import MarkdownRenderer from './MarkdownRenderer';
 import html2canvas from 'html2canvas';
 import { ProductStructuredData } from './ProductStructuredData';
@@ -1427,6 +1428,12 @@ export function ReportStreamer({ query, onDataReady }: ReportStreamerProps) {
 
         {/* 第三方验证搜索 */}
         <VerifySearch productName={object.productName ?? query} />
+
+        {/* 数据集交叉验证 */}
+        <DatasetInsight
+          category={object.category}
+          flaws={flaws}
+        />
 
         {/* 分享海报按钮（底部） */}
         {hasScore && flaws.length > 0 && (
