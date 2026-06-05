@@ -95,24 +95,22 @@ export function cacheUserInfo(user: UserInfo | null): void {
 // ============================================
 // 注册
 // ============================================
-export async function register(email: string, username: string, password: string, nickname?: string): Promise<AuthResult> {
+export async function register(username: string, password: string, nickname?: string): Promise<AuthResult> {
   const auth = getAuth();
 
   // 基础校验
   if (!username || username.length < 2) return { success: false, error: '用户名至少2个字符' };
   if (username.length > 20) return { success: false, error: '用户名最多20个字符' };
   if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
-  if (!email || !email.includes('@')) return { success: false, error: '请输入有效的邮箱地址' };
 
   try {
     const name = nickname || username;
 
+    // 使用用户名注册（EmailLogin 未启用，UsernameLogin 已启用）
     const { error: signUpError } = await (auth as any).signUp({
       username,
-      email,
       password,
       user_metadata: {
-        email,
         username,
         nickName: name,
         nickname: name,
@@ -172,8 +170,19 @@ export async function login(username: string, password: string): Promise<AuthRes
 // ============================================
 export async function logout(): Promise<void> {
   const auth = getAuth();
-  try { await auth.signOut(); } catch {}
+  try {
+    await auth.signOut();
+  } catch {
+    // signOut 失败也要继续清理本地状态
+  }
+  // 强制清除所有本地缓存
   cacheUserInfo(null);
+  // 清除 CloudBase 持久化的 session（双重保障）
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('cloudbase_session');
+    }
+  } catch {}
 }
 
 // ============================================
