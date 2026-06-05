@@ -156,22 +156,33 @@ export async function login(username: string, password: string): Promise<AuthRes
   }
 
   try {
-    const result = await auth.signInWithPassword({ username, password });
+    // 注册时使用了占位邮箱 ${username}@avp-internal.local
+    // signInWithPassword 需要用同样的 email 格式才能匹配到用户
+    const loginEmail = `${username.toLowerCase()}@avp-internal.local`;
+    console.log('[登录] 尝试用 email 格式登录:', loginEmail);
+
+    const result = await (auth as any).signInWithPassword({
+      email: loginEmail,
+      password,
+    });
 
     if (result.error) {
       const msg = String(result.error.message || '');
+      console.error('[登录失败]', JSON.stringify(result.error));
       if (msg.includes('密码') || msg.includes('password') || msg.includes('credential')) {
         return { success: false, error: '用户名或密码错误' };
       }
-      return { success: false, error: `登录失败: ${msg}` };
+      return { success: false, error: `[LOGIN-FAIL] ${msg}` };
     }
 
     const user = mapCloudUser(result.data.user);
     cacheUserInfo(user);
 
+    console.log('[登录成功] 用户:', user.username);
     return { success: true, user };
   } catch (e: any) {
-    return { success: false, error: e?.message || '登录异常，请稍后重试' };
+    console.error('[登录异常]', e);
+    return { success: false, error: `[LOGIN-EXCEPTION] ${e?.message || '登录异常'}` };
   }
 }
 
