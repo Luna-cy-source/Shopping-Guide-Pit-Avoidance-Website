@@ -8,6 +8,7 @@ import { useBookmarks, type BookmarkItem } from '../hooks/useBookmarks';
 import { apiUrl } from '../lib/api';
 import BroadcastTicker from '../components/BroadcastTicker';
 import BookmarkDetailModal from '../components/BookmarkDetailModal';
+import DataCredibility from '../components/DataCredibility';
 
 
 const FALLBACK_QUERIES = [
@@ -593,6 +594,11 @@ export default function HomePage() {
           </span>
         </div>
       </section>
+
+      {/* ==================================================
+          K 区：数据背书 — 公开数据集统计
+          ================================================== */}
+      <DataCredibility />
 
       {/* 底部声明 */}
       <p className="w-full bg-white py-8 text-center text-xs font-medium text-slate-300">

@@ -1,0 +1,52 @@
+{
+  "source": "Public datasets downloaded from GitHub",
+  "datasets": [
+    {
+      "name": "U.S. Consumer Product Recalls",
+      "source_url": "https://github.com/the-codingschool/datasets",
+      "records": 9350,
+      "description": "CPSC consumer product recall records with hazard classification",
+      "key_stats": {
+        "total_recalls": 9350,
+        "top_hazards": [
+          [
+            "Fire & Fire-Related Burn",
+            510
+          ],
+          [
+            "Choking",
+            475
+          ],
+          [
+            "Electrocution/Electric Shock",
+            235
+          ],
+          [
+            "Laceration",
+            232
+          ],
+          [
+            "Fall",
+            156
+          ],
+          [
+            "Vehicle Accident",
+            89
+          ]
+        ]
+      }
+    },
+    {
+      "name": "Deceptive Opinion Spam Corpus",
+      "source_url": "https://github.com/chotipy/Deceptive-Opinion-Spam",
+      "records": 1600,
+      "description": "Gold-standard corpus of truthful and deceptive hotel reviews from TripAdvisor",
+      "key_stats": {
+        "total_reviews": 1600,
+        "fake_reviews": 800,
+        "fake_pct": 50.0
+      }
+    }
+  ],
+  "summary_text": "Based on analysis of 9,350+ product recalls and 1,600 labeled reviews from public open datasets, consumer protection issues are widespread across categories including fire hazards, choking risks, and fake online reviews."
+}
