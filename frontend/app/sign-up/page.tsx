@@ -18,6 +18,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const { register } = useAuth();
   const router = useRouter();
 
@@ -50,8 +51,9 @@ export default function SignUpPage() {
         nickname.trim() || undefined,
       );
       if (result.success) {
-        // 注册成功 → 跳转登录页
-        router.push('/sign-in?registered=1');
+        // 注册成功 → 显示成功提示，延迟跳转
+        setSuccess(true);
+        setTimeout(() => router.push('/sign-in?registered=1'), 1500);
       } else {
         setError(result.error || '注册失败');
       }
@@ -74,15 +76,28 @@ export default function SignUpPage() {
           <p className="mt-1 text-xs text-gray-400">加入 AI 避坑实验室，开始聪明消费</p>
         </div>
 
+        {/* 成功提示 */}
+        {success && (
+          <div className="mb-4 animate-in fade-in rounded-lg bg-green-50 px-4 py-3 text-center">
+            <div className="mx-auto mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-500">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-green-700">注册成功！</p>
+            <p className="mt-0.5 text-xs text-green-600">正在跳转到登录页...</p>
+          </div>
+        )}
+
         {/* 错误提示 */}
-        {error && (
+        {error && !success && (
           <div className="mb-4 rounded-lg bg-red-50 px-3 py-2.5 text-xs font-medium text-red-600">
             {error}
           </div>
         )}
 
         {/* 表单 */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className={`space-y-3.5 ${success ? 'pointer-events-none opacity-40' : ''}`}>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">
               用户名 <span className="text-red-400">*</span>
