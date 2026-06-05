@@ -149,11 +149,13 @@ export async function login(username: string, password: string): Promise<AuthRes
   }
 
   try {
-    // 纯用户名登录，与 signUp({ username, password }) 纯用户名注册匹配
-    console.log('[登录] 用户名模式:', username);
+    // 注册时用 signUp({ email: "{username}@pit-avoidance.app", username, password })
+    // v3 SDK 以 email 为主标识符，登录必须用同样格式才能匹配
+    const loginEmail = `${username.toLowerCase()}@pit-avoidance.app`;
+    console.log('[登录] 用email匹配:', loginEmail, '原始输入:', username);
 
     const result = await auth.signInWithPassword({
-      username,
+      email: loginEmail,
       password,
     });
 
