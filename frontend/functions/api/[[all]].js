@@ -763,7 +763,9 @@ const STATIC_BLACKLIST = {
   updatedAt: '2026-05-28',
   note: '数据来源于消费者实测反馈与电商平台公开差评汇总，定期更新',
 };
-const memoryExposes = [];
+const RECALL_SUMMARY = {"source":"U.S. CPSC Product Recalls","sourceUrl":"https://github.com/the-codingschool/datasets","totalRecords":9350,"summary":"美国消费品安全委员会（CPSC）官方产品召回记录，覆盖家电、家具、玩具、工具等品类。","hazardDistribution":[{"name":"火灾/烧伤","count":2630,"pct":28.7},{"name":"其他安全风险","count":1904,"pct":20.8},{"name":"跌落/翻倒","count":1160,"pct":12.6},{"name":"窒息风险","count":1093,"pct":11.9},{"name":"中毒/化学风险","count":664,"pct":7.2},{"name":"交通事故/撞击","count":627,"pct":6.8},{"name":"割伤/划伤","count":588,"pct":6.4},{"name":"触电/电击","count":507,"pct":5.5}],"topManufacturers":[["Polaris Industries Inc., of Medina, Minn.",44],["Sears",30],["Polaris Industries Inc., of Medina, Minnesota",27],["Deere & Company, of Moline, Ill.",26],["Kmart",24]],"yearlyTrend":[{"year":"2021","count":219},{"year":"2022","count":292},{"year":"2023","count":324},{"year":"2024","count":305},{"year":"2025","count":199}]};
+   766:const REVIEW_SUMMARY = {"source":"Deceptive Opinion Spam Corpus","sourceUrl":"https://github.com/chotipy/Deceptive-Opinion-Spam","totalRecords":1600,"description":"TripAdvisor 酒店评论经专家人工标注真伪的黄金标准语料库。","fakeVsReal":{"fake":{"count":800,"pct":50.0},"real":{"count":800,"pct":50.0}},"polarityBreakdown":{"fake":{"positive":400,"negative":400},"real":{"positive":400,"negative":400}},"keyInsight":"虚假评论中正面评价偏多，说明虚假评论常用于\"刷好评\"。AI 分析商品时可参考此模式识别可疑评价。"};
+   767:const memoryExposes = [];
 
 // ============================================
 // 主路由入口
@@ -837,6 +839,8 @@ export const onRequest = async (context) => {
   if (path === '/api/health') return json({ status: 'ok', engine: 'DeepSeek', timestamp: Date.now() });
   if (path === '/api/trending') return json(STATIC_TRENDING);
   if (path === '/api/blacklist') return json(STATIC_BLACKLIST);
+  if (path === '/api/datasets/recalls') return json(RECALL_SUMMARY);
+  if (path === '/api/datasets/reviews') return json(REVIEW_SUMMARY);
 
   // ======== GET /api/expose ========
   if (path === '/api/expose' && method === 'GET') {
