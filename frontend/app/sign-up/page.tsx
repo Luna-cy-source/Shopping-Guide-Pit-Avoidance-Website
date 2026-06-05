@@ -11,6 +11,7 @@ const RANDOM_NICKNAMES = [
 ];
 
 export default function SignUpPage() {
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
@@ -44,6 +45,7 @@ export default function SignUpPage() {
 
     try {
       const result: AuthResult = await register(
+        email.trim(),
         username.trim(),
         password,
         nickname.trim() || undefined,
@@ -94,6 +96,20 @@ export default function SignUpPage() {
               required
               minLength={2}
               maxLength={20}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm outline-none transition-all placeholder:text-gray-300 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              邮箱 <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="用于账号验证和找回密码"
+              required
               className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm outline-none transition-all placeholder:text-gray-300 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100"
             />
           </div>
@@ -150,7 +166,7 @@ export default function SignUpPage() {
 
           <button
             type="submit"
-            disabled={loading || !username || !password || !confirmPassword}
+            disabled={loading || !username || !email || !password || !confirmPassword}
             className="mt-2 w-full rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-purple-200 transition-all hover:shadow-lg hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (

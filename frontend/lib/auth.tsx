@@ -95,21 +95,20 @@ export function cacheUserInfo(user: UserInfo | null): void {
 // ============================================
 // 注册
 // ============================================
-export async function register(username: string, password: string, nickname?: string): Promise<AuthResult> {
+export async function register(email: string, username: string, password: string, nickname?: string): Promise<AuthResult> {
   const auth = getAuth();
 
   // 基础校验
   if (!username || username.length < 2) return { success: false, error: '用户名至少2个字符' };
   if (username.length > 20) return { success: false, error: '用户名最多20个字符' };
   if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
+  if (!email || !email.includes('@')) return { success: false, error: '请输入有效的邮箱地址' };
 
   try {
     const name = nickname || username;
-    // CloudBase signUp 要求必须有 email 或 phone，这里用用户名自动生成一个内部邮箱
-    const autoEmail = `${username}@avp.internal`;
 
     const { error: signUpError } = await (auth as any).signUp({
-      email: autoEmail,
+      email,
       password,
       user_metadata: {
         username,
