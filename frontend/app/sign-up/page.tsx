@@ -37,8 +37,15 @@ export default function SignUpPage() {
       return;
     }
 
-    if (password.length < 4) {
-      setError('密码至少需要4个字符');
+    if (password.length < 8) {
+      setError('密码至少需要8个字符');
+      return;
+    }
+
+    // 密码复杂度
+    const cmpl = [/[A-Z]/.test(password), /[a-z]/.test(password), /\d/.test(password), /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
+    if (cmpl < 3) {
+      setError('密码需含大写、小写、数字、特殊字符中至少3种');
       return;
     }
 
@@ -143,11 +150,24 @@ export default function SignUpPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少4个字符"
+              placeholder="8-32位，至少含大写/小写/数字/特殊中3种"
               required
-              minLength={4}
+              minLength={8}
+              maxLength={32}
               className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm outline-none transition-all placeholder:text-gray-300 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-100"
             />
+            {password && (
+              <div className="mt-1.5 flex gap-2">
+                {(['A-Z', 'a-z', '0-9', '#$%']).map((hint, i) => {
+                  const checks = [/[A-Z]/.test(password), /[a-z]/.test(password), /\d/.test(password), /[^a-zA-Z0-9]/.test(password)];
+                  return (
+                    <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded-full ${checks[i] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                      {checks[i] ? '✓' : '○'} {hint}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>

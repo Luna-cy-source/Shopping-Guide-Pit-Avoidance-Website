@@ -35,5 +35,12 @@ export function getDatabase() {
   return getApp().database();
 }
 
+/** 调用云函数 */
+export async function callFunction(name: string, data: Record<string, any>) {
+  const app = getApp();
+  const res = await app.callFunction({ name, data });
+  return res.result;
+}
+
 /** 环境信息 */
 export { ENV_ID, REGION };

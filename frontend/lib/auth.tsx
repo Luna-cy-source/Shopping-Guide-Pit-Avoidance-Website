@@ -10,7 +10,7 @@
  *   - 收藏/历史：localStorage（快速） + CloudBase NoSQL（跨设备同步）
  */
 
-import { getAuth } from './cloudbase-client';
+import { getAuth, callFunction } from './cloudbase-client';
 
 // ============================================
 // 类型
@@ -96,100 +96,35 @@ export function cacheUserInfo(user: UserInfo | null): void {
 // 注册
 // ============================================
 export async function register(username: string, password: string, nickname?: string): Promise<AuthResult> {
-  const auth = getAuth();
-
   // 基础校验
   if (!username || username.length < 2) return { success: false, error: '用户名至少2个字符' };
   if (username.length > 20) return { success: false, error: '用户名最多20个字符' };
-  if (!password || password.length < 4) return { success: false, error: '密码至少4个字符' };
+  if (!password || password.length < 8) return { success: false, error: '密码至少8个字符' };
+  if (password.length > 32) return { success: false, error: '密码最多32个字符' };
 
-  // 用 email 作为账户标识（v3 SDK 注册需要 email）
-  // 登录用 username 匹配（usernamePassword 已启用）
-  const email = `${username.toLowerCase()}@pit-avoidance.app`;
+  // 密码复杂度：大写、小写、数字、特殊字符 至少3种
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  const hasSpecial = /[^a-zA-Z0-9]/.test(password);
+  const cmpl = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
+  if (cmpl < 3) {
+    return { success: false, error: '密码需包含大写字母、小写字母、数字、特殊字符(如@#$%)中至少3种' };
+  }
 
   try {
-    console.log('[注册] 开始注册...', { email, username });
+    console.log('[注册] 调用云函数 registerUser', { username });
+    const result = await callFunction('registerUser', { username, password, nickname: nickname || username });
+    console.log('[注册] 云函数返回:', result);
 
-    // === 策略：尝试多种注册方式 ===
-
-    let result: any;
-
-    // 尝试1: 废弃的直接注册API（无需验证码，一步完成）
-    console.log('[注册] 尝试1: signUpWithEmailAndPassword(废弃但可能可用)');
-    try {
-      result = await auth.signUpWithEmailAndPassword(email, password);
-      console.log('[注册] signUpWithEmailAndPassword 结果:', JSON.stringify(result.error || 'OK'));
-    } catch (e1: any) {
-      console.log('[注册] signUpWithEmailAndPassword 不可用:', e1?.message);
-      result = null;
+    if (result.success) {
+      return { success: true };
     }
-
-    // 尝试2: v3 signUp + 检查是否返回了 verifyOtp（需要验证码流程）
-    if (!result || result.error) {
-      console.log('[注册] 尝试2: v3 signUp({email, username, password})');
-      result = await auth.signUp({ email, username, password });
-
-      if (!result.error && result.data?.verifyOtp) {
-        // v3 返回了 verifyOtp → 需要验证码，但我们无法让用户输入
-        // 这种情况说明必须走验证码流程，暂时不支持
-        console.warn('[注册] v3 signUp 需要邮箱验证码(verifyOtp)，当前不支持');
-        return {
-          success: false,
-          error: '注册需要邮箱验证码，请稍后再试或联系管理员',
-        };
-      }
-    }
-
-    // 处理结果
-    if (result?.error) {
-      const msg = String(result.error.message || '');
-      console.error('[注册失败]', msg);
-      if (msg.includes('已存在') || msg.includes('already') || msg.includes('exist') || msg.includes('taken')) {
-        return { success: false, error: '用户名已被注册，请直接登录' };
-      }
-      return { success: false, error: msg || '注册失败，请重试' };
-    }
-
-    // 注册成功！检查是否有 session/user 直接返回
-    console.log('[注册成功]', result.data ? '有data' : '无data(仅error:null)');
-
-    // 尝试自动登录
-    const user = await tryAutoLogin(auth, username, password, email);
-    if (user) {
-      return { success: true, user };
-    }
-
-    return { success: true, user: undefined };
+    return { success: false, error: result.error || '注册失败' };
   } catch (e: any) {
     console.error('[注册异常]', e);
     return { success: false, error: e?.message || '网络异常' };
   }
-}
-
-// 自动登录辅助
-async function tryAutoLogin(auth: any, username: string, password: string, email: string) {
-  // signInWithPassword 支持 username/email/phone 三选一
-  const modes = [
-    { label: 'username', params: { username, password } },
-    { label: 'email', params: { email, password } },
-  ];
-
-  for (const mode of modes) {
-    console.log(`[自动登录] ${mode.label}`);
-    try {
-      const r = await auth.signInWithPassword(mode.params);
-      if (!r.error && r.data?.user) {
-        const user = mapCloudUser(r.data.user);
-        cacheUserInfo(user);
-        console.log(`[自动登录成功] ${mode.label}`);
-        return user;
-      }
-      console.log(`[自动登录] ${mode.label} 失败:`, r.error?.message);
-    } catch (e: any) {
-      console.log(`[自动登录] ${mode.label} 异常:`, e?.message);
-    }
-  }
-  return null;
 }
 
 // ============================================
