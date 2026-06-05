@@ -138,7 +138,7 @@ export async function register(username: string, password: string, nickname?: st
     // 注册成功！不自动登录（CloudBase signInWithPassword 与 signUp 的凭据格式不同）
     // 引导用户到登录页手动登录一次即可
     console.log('[注册成功] 用户:', username);
-    return { success: true, user: null };
+    return { success: true, user: undefined };
   } catch (e: any) {
     console.error('[注册异常-catch]', e);
     return { success: false, error: `[SIGNUP-EXCEPTION] ${e?.message || '网络异常'}` };
