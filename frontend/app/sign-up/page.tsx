@@ -1,3 +1,4 @@
+/* version: v2 - email field added */
 'use client';
 
 import { useState } from 'react';
