@@ -126,10 +126,13 @@ export async function register(username: string, password: string, nickname?: st
 
     if (signUpError) {
       const msg = String(signUpError.message || '');
+      // 输出完整错误对象到控制台方便调试
+      console.error('[注册失败] 原始错误:', JSON.stringify(signUpError));
       if (msg.includes('已存在') || msg.includes('already') || msg.includes('exist') || msg.includes('taken')) {
         return { success: false, error: '用户名已被注册' };
       }
-      return { success: false, error: `注册失败: ${msg}` };
+      // 返回详细错误信息（包含原始消息）
+      return { success: false, error: msg || '注册失败：用户名或密码不满足要求' };
     }
 
     // 注册成功后自动登录
