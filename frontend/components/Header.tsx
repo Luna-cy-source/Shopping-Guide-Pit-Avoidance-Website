@@ -29,6 +29,7 @@ const NAV_TABS: NavTab[] = [
 export default function Header() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
@@ -37,9 +38,23 @@ export default function Header() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // 关闭路由切换时关闭菜单
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const isActive = (tabPath: string) => {
     if (tabPath === '/') return pathname === '/';
     return pathname.startsWith(tabPath);
+  };
+
+  const navLinkClass = (tabPath: string) => {
+    const active = isActive(tabPath);
+    return `relative inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 ${
+      active
+        ? 'bg-red-50/60 text-red-600 shadow-[inset_0_1px_0_rgba(239,68,68,0.1)]'
+        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/80'
+    }`;
   };
 
   return (
@@ -56,7 +71,7 @@ export default function Header() {
           href="/"
           className="group flex shrink-0 items-center gap-2 text-sm font-bold text-slate-900 transition-opacity hover:opacity-70"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-rose-500 shadow-sm shadow-red-200/30">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-red-500 shadow-sm shadow-red-200/30">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-4 w-4 text-white"
@@ -75,24 +90,20 @@ export default function Header() {
           <span className="whitespace-nowrap hidden sm:inline">AI避坑独立实验室</span>
         </Link>
 
-        {/* ---- 中间导航 Tabs ---- */}
-        <nav className="mx-auto flex items-center gap-0.5">
+        {/* ---- 中间导航 Tabs（桌面端）---- */}
+        <nav className="mx-auto hidden items-center gap-0.5 lg:flex">
           {NAV_TABS.map((tab) => {
             const active = isActive(tab.path);
             return (
               <Link
                 key={tab.path}
                 href={tab.path}
-                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 ${
-                  active
-                    ? 'bg-red-50/60 text-red-600 shadow-[inset_0_1px_0_rgba(239,68,68,0.1)]'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/80'
-                }`}
+                className={navLinkClass(tab.path)}
               >
                 <span className="text-sm leading-none transition-transform duration-200 group-hover:scale-110">
                   {tab.icon}
                 </span>
-                <span className="hidden lg:inline">{tab.label}</span>
+                {tab.label}
                 {/* 当前页高亮下划线 + 脉动圆点 */}
                 {active && (
                   <>
@@ -105,20 +116,64 @@ export default function Header() {
           })}
         </nav>
 
-        {/* ---- 右侧用户区（自定义认证）---- */}
-        <div className="flex shrink-0 items-center gap-3">
-          {/* 个人主页入口 */}
+        {/* ---- 右侧用户区（桌面端） ---- */}
+        <div className="hidden shrink-0 items-center gap-3 md:flex">
           <Link
             href="/profile"
             className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-500 shadow-sm transition-all duration-200 hover:border-red-300 hover:text-red-500 hover:shadow-md hover:shadow-red-100/50 active:scale-95 sm:px-4"
           >
             👤 个人主页
           </Link>
-
-          {/* 登录 / 用户头像 + 退出按钮 */}
           <AuthButtons />
         </div>
+
+        {/* ---- 移动端：登录 + 汉堡菜单 ---- */}
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
+          <Link
+            href="/profile"
+            className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 shadow-sm sm:px-2.5 sm:text-[12px]"
+          >
+            👤
+          </Link>
+          <AuthButtons />
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="flex h-9 w-9 flex-col items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100"
+            aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
+          >
+            <span className={`block h-0.5 w-4.5 rounded-full bg-current transition-all duration-200 ${mobileMenuOpen ? 'translate-y-1 rotate-45' : ''}`} />
+            <span className={`mt-1 block h-0.5 w-4.5 rounded-full bg-current transition-all duration-200 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
+            <span className={`mt-1 block h-0.5 w-4.5 rounded-full bg-current transition-all duration-200 ${mobileMenuOpen ? '-translate-y-1 -rotate-45' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* ---- 移动端下拉菜单 ---- */}
+      {mobileMenuOpen && (
+        <div className="border-t border-slate-100 bg-white px-4 pb-4 pt-2 shadow-lg lg:hidden">
+          <nav className="flex flex-col gap-0.5">
+            {NAV_TABS.map((tab) => {
+              const active = isActive(tab.path);
+              return (
+                <Link
+                  key={tab.path}
+                  href={tab.path}
+                  className={`${navLinkClass(tab.path)} w-full`}
+                >
+                  <span className="text-sm">{tab.icon}</span>
+                  {tab.label}
+                  {active && (
+                    <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-red-500" />
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-3">
+            <AuthButtons />
+          </div>
+        </div>
+      )}
     </header>
   );
 }

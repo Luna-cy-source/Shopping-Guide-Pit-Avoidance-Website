@@ -22,28 +22,43 @@ export async function submitSearch(query: string): Promise<{
   try {
     const result = await callFunction('aiSearch', { query });
 
-    // 云函数直接返回分析数据
-    if (result && result.code === undefined) {
-      // 正常结果
-      return {
-        jobId: 'cloudbase-direct',
-        status: 'done',
-        data: result,
-      };
-    }
+    // 云函数可能返回两种格式：
+    // A) SDK 直出模式：直接返回数据对象 { productName, flaws, ... }
+    // B) HTTP 包装模式：{ statusCode, body: '{"jobId":"...","status":"done","data":{...}}' }
 
-    // 云函数返回了错误格式
-    if (result && result.error) {
+    let actualData: any;
+
+    if (result && typeof result.body === 'string') {
+      // B: HTTP 包装模式 — 从 body 解析
+      try {
+        const parsed = JSON.parse(result.body);
+        actualData = parsed.data || parsed;
+      } catch (e) {
+        console.error('[api] 解析 body 失败:', e);
+        return { jobId: '', status: 'error', error: 'AI 返回数据解析失败' };
+      }
+    } else if (result && result.error) {
+      // 错误格式
       return { jobId: '', status: 'error', error: String(result.error) };
-    }
-
-    if (result && result.statusCode && result.statusCode >= 400) {
-      const msg = result.body ? JSON.parse(result.body).message || '' : '';
+    } else if (result && result.statusCode && result.statusCode >= 400) {
+      // HTTP 错误码
+      const msg = (typeof result.body === 'string') ? (JSON.parse(result.body).message || '') : '';
       return { jobId: '', status: 'error', error: msg || `HTTP ${result.statusCode}` };
+    } else {
+      // A: SDK 直出模式 或 兜底
+      actualData = result;
     }
 
-    // 兜底：把原始结果作为数据
-    return { jobId: 'cloudbase-direct', status: 'done', data: result };
+    // 验证数据完整性
+    if (!actualData || typeof actualData !== 'object') {
+      return { jobId: '', status: 'error', error: 'AI 返回数据为空' };
+    }
+
+    return {
+      jobId: 'cloudbase-direct',
+      status: 'done',
+      data: actualData,
+    };
   } catch (err: any) {
     console.error('[api] aiSearch 调用失败:', err);
     throw new Error(err?.message || 'AI 分析请求失败');

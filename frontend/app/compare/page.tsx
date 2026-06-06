@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { submitSearch } from '../../lib/api';
 
 /* ============================================
    类型定义
@@ -103,10 +104,11 @@ function ProductCard({
   side,
   isWinner,
 }: {
-  product: CompareProduct;
+  product: CompareProduct | null;
   side: 'A' | 'B';
   isWinner: boolean;
 }) {
+  if (!product) return null;
   const c = scoreColor(product.score);
 
   return (
@@ -320,52 +322,6 @@ export default function ComparePage() {
   const resultsRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ==================== 核心分析函数 ====================
-  const callAnalysisAPI = async (prompt: string): Promise<CompareResult> => {
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: prompt }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`服务器返回 ${res.status}`);
-      }
-
-      const json = await res.json();
-
-      if (json.error) {
-        throw new Error(json.error);
-      }
-
-      if (json.status !== 'done' || !json.data) {
-        throw new Error('AI 返回数据不完整');
-      }
-
-      const data = json.data;
-      if (!data || data.intent !== 'compare') {
-        throw new Error('AI 对比结果格式异常');
-      }
-
-      return data as CompareResult;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') {
-        throw new Error('请求超时，AI 服务响应过慢');
-      }
-      throw err;
-    }
-  };
-
   // ==================== 对比分析 ====================
   const handleCompare = async () => {
     const a = productA.trim();
@@ -376,22 +332,15 @@ export default function ComparePage() {
     setError(null);
     setIsFallback(false);
 
-    const prompt = `【1v1 深度对比模式】请对下面两款商品进行全方位对比分析：
-
-商品 A：「${a}」
-商品 B：「${b}」
-
-要求：
-1. 使用 intent='compare' 模式输出
-2. 分别为两款商品给出 0-10 评分、价格区间、最适合人群
-3. 列出每款商品 3-5 个核心优势和槽点
-4. 生成 5-8 个对比维度的逐项对比表
-5. 给出综合结论和最终推荐（winner: A/B/tie）
-6. 即便你的训练数据中某一款商品信息有限，也要基于你能获取的信息尽力分析，不要拒绝对比`;
+    // 发送简洁查询给后端，让云函数 buildSystemPrompt 的对比检测能正确工作
+    const cleanQuery = `${a} vs ${b}`;
 
     try {
-      const data = await callAnalysisAPI(prompt);
-      setResult(data);
+      const res = await submitSearch(cleanQuery);
+      if (res.status !== 'done' || !res.data) {
+        throw new Error(res.error || 'AI 返回数据不完整');
+      }
+      setResult(res.data as CompareResult);
     } catch (err: any) {
       const msg = err?.message || String(err);
       console.error('[Compare] AI 分析失败:', msg);
@@ -642,6 +591,14 @@ export default function ComparePage() {
               </button>
             </div>
 
+            {/* 防御：productA/productB 为空时显示提示而非崩溃 */}
+            {(!result.productA || !result.productB) ? (
+              <div className="card-premium text-center p-8">
+                <p className="text-sm font-bold text-red-600">对比数据不完整</p>
+                <p className="mt-1 text-xs text-red-500">AI 返回的对比结果缺少商品信息，请重试。</p>
+                <button type="button" onClick={handleCompare} className="mt-3 rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600">重新分析</button>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-fade-in-up">
               <ProductCard
                 product={result.productA}
@@ -654,6 +611,7 @@ export default function ComparePage() {
                 isWinner={result.winner === 'B'}
               />
             </div>
+            )}
 
             {result.comparisonTable && result.comparisonTable.length > 0 && (
               <ComparisonTable table={result.comparisonTable} />
@@ -678,7 +636,7 @@ export default function ComparePage() {
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-1.5">
                   <span className="text-lg">🏆</span>
                   <span className="text-sm font-bold text-amber-700">
-                    推荐购买：{result.winner === 'A' ? result.productA.productName : result.productB.productName}
+                    推荐购买：{result.winner === 'A' ? (result.productA?.productName || '商品A') : (result.productB?.productName || '商品B')}
                   </span>
                 </div>
               )}

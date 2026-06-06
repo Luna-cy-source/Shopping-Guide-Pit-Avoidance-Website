@@ -153,6 +153,9 @@ export async function register(username: string, password: string, nickname?: st
 // ============================================
 export async function login(username: string, password: string): Promise<AuthResult> {
   const auth = getAuth();
+  if (!auth) {
+    return { success: false, error: 'SDK 未就绪，请刷新页面重试' };
+  }
 
   if (!username || !password) {
     return { success: false, error: '请输入用户名和密码' };
@@ -198,10 +201,12 @@ export async function login(username: string, password: string): Promise<AuthRes
 // ============================================
 export async function logout(): Promise<void> {
   const auth = getAuth();
-  try {
-    await auth.signOut();
-  } catch {
-    // signOut 失败也要继续清理本地状态
+  if (auth) {
+    try {
+      await auth.signOut();
+    } catch {
+      // signOut 失败也要继续清理本地状态
+    }
   }
   // 强制清除所有本地缓存
   cacheUserInfo(null);
@@ -218,6 +223,7 @@ export async function logout(): Promise<void> {
 // ============================================
 export async function getCurrentSessionAsync(): Promise<{ user: UserInfo } | null> {
   const auth = getAuth();
+  if (!auth) return null; // SDK 不可用时返回 null，使用本地缓存
   try {
     const { data } = await auth.getSession();
 

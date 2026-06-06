@@ -14,6 +14,13 @@ functions/
 .env
 .env.local
 .env.*.local
+
+# 冗余/归档文件
+redundant_archive/
+
+# CI/CD 与部署配置（交作业时不需要）
+.github/
+.edgeone/
 .dev.vars
 
 # 编辑器

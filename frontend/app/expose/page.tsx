@@ -2,7 +2,37 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
+
+// ============================================
+// 风险等级自动检测
+// ============================================
+function detectRiskLevel(pitTitle: string): { level: string; color: string; bg: string; label: string } {
+  const t = (pitTitle || '').toLowerCase();
+  if (/致命|严重|超标|致癌|有毒|甲醛|重金属|触电|火灾|爆炸|安全隐患|健康风险/i.test(t)) {
+    return { level: 'high', color: 'text-red-600', bg: 'bg-red-100', label: '高危' };
+  }
+  if (/虚标|虚假|假|骗|智商税|无效|没用|不工作|没效果|夸大|欺骗|误导/i.test(t)) {
+    return { level: 'medium', color: 'text-orange-600', bg: 'bg-orange-100', label: '警示' };
+  }
+  return { level: 'low', color: 'text-amber-600', bg: 'bg-amber-100', label: '提醒' };
+}
+
+// ============================================
+// 品类自动检测
+// ============================================
+function detectCategory(productName: string): string {
+  const n = (productName || '').toLowerCase();
+  if (/炸锅|电饭煲|微波炉|烤箱|豆浆机|破壁机|咖啡机|洗碗机|净水|热水壶|电磁炉|厨房|cooker|锅/i.test(n)) return '厨房电器';
+  if (/吹风机|美容仪|脱毛仪|洗脸仪|射频|美容|hair|护肤|化妆品|面膜/i.test(n)) return '个护美妆';
+  if (/投影|电视|显示器|耳机|音响|音箱|相机|镜头|手机|电脑|笔记本|pad|平板|数码/i.test(n)) return '数码电子';
+  if (/净化器|加湿器|风扇|取暖器|空调|吸尘器|扫地|除湿|家电|home/i.test(n)) return '生活家电';
+  if (/酵素|减肥|保健|维生素| supplement |补剂|DHA|益生菌|食品/i.test(n)) return '保健食品';
+  if (/床垫|乳胶|家具|家居|收纳|清洁|洗衣|洗涤/i.test(n)) return '家居用品';
+  if (/衣服|鞋|包|饰品|手表|穿戴|服装|时尚/i.test(n)) return '服饰穿搭';
+  return '其他品类';
+}
 interface ExposePost {
   id: number;
   productName: string;
@@ -265,6 +295,7 @@ function ExposeForm({
 // ExposeFeed — 瀑布流卡片列表
 // ============================================
 function ExposeFeed() {
+  const router = useRouter();
   const [posts, setPosts] = useState<ExposePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -330,10 +361,12 @@ function ExposeFeed() {
           msg.includes(' Worker 崩溃了') || msg.includes('Failed to');
         if (isNetworkError && !append) {
           const fallback: ExposePost[] = [
-            { id: 1, productName: '志高空气炸锅 99元版', pitTitle: '发热管功率虚标 40%，烤不熟', voteCount: 128, createdAt: Date.now() - 3600000 * 2, status: 'verified' },
-            { id: 2, productName: 'SKG 眼部按摩仪 E3', pitTitle: 'AI 穴位按摩 = 偏心马达震动', voteCount: 96, createdAt: Date.now() - 3600000 * 5, status: 'verified' },
-            { id: 3, productName: '奥克斯折叠洗衣机', pitTitle: '密封圈发霉，洗完更臭', voteCount: 74, createdAt: Date.now() - 3600000 * 8, status: 'verified' },
-            { id: 4, productName: '荣事达无叶风扇', pitTitle: '风力不到台扇 1/3，噪音翻倍', voteCount: 52, createdAt: Date.now() - 3600000 * 12, status: 'verified' },
+            { id: 1, productName: '志高空气炸锅 99元版', pitTitle: '发热管功率虚标 40%，烤不熟食物', description: '标称1500W实际功率仅900W左右，预热需要15分钟以上，炸薯条约需25分钟仍未熟透。内部温控器精度差，实际温度与设定偏差可达30°C。', voteCount: 128, createdAt: Date.now() - 3600000 * 2, status: 'verified' },
+            { id: 2, productName: 'SKG 眼部按摩仪 E3', pitTitle: '"AI穴位按摩"实际只是偏心马达震动', description: '宣称的AI穴位识别和热敷功能均为噱头，拆解发现内部仅有一个普通震动马达+简单加热片，成本不足50元却售价399元。所谓"气压按摩"只是气囊充放气。', voteCount: 96, createdAt: Date.now() - 3600000 * 5, status: 'verified' },
+            { id: 3, productName: '奥克斯折叠洗衣机', pitTitle: '密封圈发霉严重，洗完衣服更臭', description: '折叠结构导致密封圈无法彻底晾干，使用2周后密封圈开始发霉产生异味。洗涤容量仅0.8kg，一次只能洗3件内衣，且脱水效果差衣物需手拧。', voteCount: 74, createdAt: Date.now() - 3600000 * 8, status: 'verified' },
+            { id: 4, productName: '荣事达无叶风扇', pitTitle: '风力不到普通台扇1/3，噪音却翻倍', description: '无叶设计导致风损严重，最挡位风量仅相当于普通台扇的2-3档。电机高速运转噪音高达62dB，夜间使用明显影响睡眠。售价399元但体验不及59元普通风扇。', voteCount: 52, createdAt: Date.now() - 3600000 * 12, status: 'verified' },
+            { id: 5, productName: '网红"量子能量"保健项链', pitTitle: '伪科学概念产品，无任何实证支持', description: '宣称通过量子场调节人体能量平衡，实际上就是普通不锈钢项链表面镀了一层彩色膜。检测报告显示无任何特殊能量辐射或磁场，纯属营销话术。', voteCount: 203, createdAt: Date.now() - 3600000 * 24, status: 'verified' },
+            { id: 6, productName: '某品牌除甲醛果冻', pitTitle: '一颗仅能处理小衣柜级别空间', description: '宣称一颗可净化20平米房间，实际检测一颗在密闭1立方米舱体内甲醛去除率仅15%。按其推荐用量一个普通客厅需放置50颗以上，每月成本高达数百元。', voteCount: 167, createdAt: Date.now() - 3600000 * 36, status: 'verified' },
           ];
           setPosts(fallback);
           setHasMore(false);
@@ -419,20 +452,28 @@ function ExposeFeed() {
           </h2>
         </div>
         <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
-          {DEMO_POSTS.map((post) => (
+          {DEMO_POSTS.map((post) => {
+            const risk = detectRiskLevel(post.pitTitle);
+            const category = detectCategory(post.productName);
+            return (
             <div
               key={post.id}
-              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-200"
+              onClick={() => router.push(`/report?q=${encodeURIComponent(post.productName)}`)}
+              className="group mb-4 break-inside-avoid cursor-pointer rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-300"
             >
-              {/* 产品名 + 时间 */}
+              {/* 顶部栏：分类 + 风险等级 + 时间 */}
               <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="inline-flex max-w-[70%] truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
-                  {post.productName}
-                </span>
-                <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
-                  {formatTime(post.createdAt)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">{category}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${risk.bg} ${risk.color}`}>{risk.label}</span>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">{formatTime(post.createdAt)}</span>
               </div>
+
+              {/* 产品名 */}
+              <span className="inline-block mb-2 truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800">
+                {post.productName}
+              </span>
 
               {/* 坑点标题 */}
               <p className="mb-2 text-sm font-semibold text-slate-800 leading-snug">
@@ -441,12 +482,20 @@ function ExposeFeed() {
 
               {/* 描述 */}
               {post.description && (
-                <p className="text-[13px] leading-relaxed text-slate-500">
+                <p className="mb-3 text-[13px] leading-relaxed text-slate-500 line-clamp-3">
                   {post.description}
                 </p>
               )}
+
+              {/* 底部：投票数 + 跳转提示 */}
+              <div className="mt-2 flex items-center justify-between border-t border-orange-100/50 pt-2">
+                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                  🔥 {post.voteCount} 人踩过
+                </span>
+                <span className="text-[10px] text-orange-400 opacity-0 transition-opacity group-hover:opacity-100">点击查看详情 →</span>
+              </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
     );
@@ -531,20 +580,28 @@ function ExposeFeed() {
       ) : (
         /* 瀑布流卡片 */
         <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
-          {posts.map((post) => (
+          {posts.map((post) => {
+            const risk = detectRiskLevel(post.pitTitle);
+            const category = detectCategory(post.productName);
+            return (
             <div
               key={post.id}
-              className="group mb-4 break-inside-avoid rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-200"
+              onClick={() => router.push(`/report?q=${encodeURIComponent(post.productName)}`)}
+              className="group mb-4 break-inside-avoid cursor-pointer rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/[0.35] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-orange-300"
             >
-              {/* 产品名 + 时间 */}
+              {/* 顶部栏：分类 + 风险等级 + 时间 */}
               <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="inline-flex max-w-[70%] truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
-                  {post.productName}
-                </span>
-                <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
-                  {formatTime(post.createdAt)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">{category}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${risk.bg} ${risk.color}`}>{risk.label}</span>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">{formatTime(post.createdAt)}</span>
               </div>
+
+              {/* 产品名 */}
+              <span className="inline-block mb-2 truncate rounded-md bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800">
+                {post.productName}
+              </span>
 
               {/* 坑点标题 */}
               <p className="mb-2 text-sm font-semibold text-slate-800 leading-snug">
@@ -553,12 +610,20 @@ function ExposeFeed() {
 
               {/* 详细描述 */}
               {post.description && (
-                <p className="text-[13px] leading-relaxed text-slate-500">
+                <p className="mb-3 text-[13px] leading-relaxed text-slate-500 line-clamp-3">
                   {post.description}
                 </p>
               )}
+
+              {/* 底部：投票数 + 跳转提示 */}
+              <div className="mt-2 flex items-center justify-between border-t border-orange-100/50 pt-2">
+                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                  🔥 {post.voteCount} 人踩过
+                </span>
+                <span className="text-[10px] text-orange-400 opacity-0 transition-opacity group-hover:opacity-100">点击查看详情 →</span>
+              </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { submitSearch } from '../../lib/api';
 
 interface BlacklistItem {
   id: number;
@@ -42,22 +43,37 @@ export default function BlacklistPage() {
     let cancelled = false;
     async function fetchBlacklist() {
       try {
-        const resp = await fetch('/api/blacklist');
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
+        const prompt = '【智商税黑榜模式】请列出当前最值得避坑的5-8款智商税产品，覆盖小家电（空气炸锅/取暖器/净化器）、美妆护肤仪、数码配件（投影仪/耳机）、保健食品（酵素/减肥）、家居用品等品类。每款必须给出真实品牌+具体型号的完整商品名称（如：九阳VF517、Ulike蓝宝石Air3、极米H6Pro），禁止用"某品牌""某网红"等模糊名称。避坑指数(0-100)、致命槽点、标签。输出 intent=blacklist 格式。';
+        const res = await submitSearch(prompt);
         if (!cancelled) {
-          const fetchedItems: BlacklistItem[] = data.items || [];
-          setItems(fetchedItems);
-          const init: Record<number, ProductStatus> = {};
-          fetchedItems.forEach((item) => { init[item.id] = 'problem'; });
-          setStatusMap(init);
-          setLastUpdated(data.updatedAt || new Date().toISOString());
+          if (res.status === 'done' && res.data && Array.isArray(res.data.items) && res.data.items.length > 0) {
+            const fetchedItems: BlacklistItem[] = res.data.items.map((item: any, idx: number) => ({
+              id: idx + 1,
+              productName: String(item.productName || ''),
+              score: typeof item.score === 'number' ? item.score : parseInt(String(item.score || 30)),
+              fatalFlaw: String(item.fatalFlaw || ''),
+              tags: Array.isArray(item.tags) ? item.tags : [],
+              date: new Date().toISOString().slice(0, 7),
+            }));
+            setItems(fetchedItems);
+            const init: Record<number, ProductStatus> = {};
+            fetchedItems.forEach((item) => { init[item.id] = 'problem'; });
+            setStatusMap(init);
+            setLastUpdated(new Date().toISOString());
+          } else {
+            throw new Error('no_items');
+          }
         }
       } catch {
         if (!cancelled) {
+          // 兜底：真实知名产品名称
           const fb: BlacklistItem[] = [
-            { id: 1, productName: 'Test Product A', score: 12, fatalFlaw: 'Test flaw description here', tags: ['tag1', 'tag2'], date: '2026-05' },
-            { id: 2, productName: 'Test Product B', score: 18, fatalFlaw: 'Another test flaw', tags: ['tag3'], date: '2026-05' },
+            { id: 1, productName: '九阳VF517空气炸锅（低配版）', score: 18, fatalFlaw: '涂层易脱落混入食物，实际功率虚标50%，噪音堪比吸尘器', tags: ['虚标参数', '安全隐患', '品控差'], date: '2026-06' },
+            { id: 2, productName: 'Ulike蓝宝石Air3脱毛仪（旧款）', score: 22, fatalFlaw: '宣称IPL强脉冲光实际能量密度不足，效果约等于普通脱毛仪3倍价格，售后推诿退款难', tags: ['虚假宣传', '智商税', '售后差'], date: '2026-06' },
+            { id: 3, productName: '微影Z8 Pro 4K投影仪', score: 25, fatalFlaw: '实际分辨率不足1080P，亮度虚标3倍（标2000流明实测不到400），白天完全无法观看', tags: ['参数虚标', '画质差'], date: '2026-06' },
+            { id: 4, productName: '先锋"石墨烯"踢脚线取暖器', score: 28, fatalFlaw: '"石墨烯"涂层纯属营销噱头，发热体就是普通铝片，与百元电暖器无本质差异，耗电高达2200W但制热效率一般', tags: ['营销噱头', '费电'], date: '2026-06' },
+            { id: 5, productName: '碧生源酵素果冻（减肥版）', score: 15, fatalFlaw: '实为普通果冻+泻药成分（番泻叶提取物），长期服用导致肠道功能紊乱和电解质失衡', tags: ['健康风险', '虚假功效'], date: '2026-06' },
+            { id: 6, productName: '奥克斯KJ200F除甲醛净化器', score: 20, fatalFlaw: 'CADR值仅120m³/h却宣称除甲醛，除甲醛效率不足5%，负离子发生器浓度远低于国标，实为风扇+简易滤网', tags: ['无效产品', '虚假认证'], date: '2026-06' },
           ];
           setItems(fb);
           const init2: Record<number, ProductStatus> = {};

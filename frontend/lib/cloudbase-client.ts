@@ -12,32 +12,50 @@ const ACCESS_KEY = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjlkMWRjMzFlLWI0ZDAtNDQ4Yi1hNzZm
 // SDK 单例
 // ============================================
 let _app: ReturnType<typeof cloudbase.init> | null = null;
+let _initError: Error | null = null;
 
-/** 获取 CloudBase App 实例（单例） */
+/** 获取 CloudBase App 实例（单例），初始化失败时返回 null */
 export function getApp() {
+  if (_initError) return null; // 已知失败，不再重试
   if (!_app) {
-    _app = cloudbase.init({
-      env: ENV_ID,
-      region: REGION,
-      accessKey: ACCESS_KEY,
-    });
+    try {
+      _app = cloudbase.init({
+        env: ENV_ID,
+        region: REGION,
+        accessKey: ACCESS_KEY,
+      });
+    } catch (err: any) {
+      _initError = err instanceof Error ? err : new Error(String(err));
+      console.error('[CloudBase] SDK 初始化失败:', _initError.message);
+      return null;
+    }
   }
   return _app;
 }
 
-/** 获取认证模块（Supabase 风格 API） */
+/** CloudBase SDK 是否可用 */
+export function isSdkReady(): boolean {
+  return !!_app && !_initError;
+}
+
+/** 获取认证模块（Supabase 风格 API），SDK 不可用时返回 null */
 export function getAuth() {
-  return getApp().auth({ persistence: 'local' });
+  const app = getApp();
+  if (!app) return null;
+  return app.auth({ persistence: 'local' });
 }
 
-/** 获取 NoSQL 文档数据库实例 */
+/** 获取 NoSQL 文档数据库实例，SDK 不可用时返回 null */
 export function getDatabase() {
-  return getApp().database();
+  const app = getApp();
+  if (!app) return null;
+  return app.database();
 }
 
-/** 调用云函数 */
+/** 调用云函数，SDK 不可用时抛出明确错误 */
 export async function callFunction(name: string, data: Record<string, any>) {
   const app = getApp();
+  if (!app) throw new Error('CloudBase SDK 未初始化，无法调用云函数');
   const res = await app.callFunction({ name, data });
   return res.result;
 }

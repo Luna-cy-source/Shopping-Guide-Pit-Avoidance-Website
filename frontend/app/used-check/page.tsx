@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import BookmarkButton, { TopBar } from '../../components/BookmarkButton';
+import { submitSearch } from '../../lib/api';
 
 /* ============================================
    类型定义
@@ -21,7 +22,7 @@ interface InspectionItem {
 interface UsedMarketResult {
   intent: 'used_market';
   productName: string;
-  riskLevel: '极高' | '中等' | '低';
+  riskLevel: string;
   riskSummary: string;
   scamRoutines: ScamRoutine[];
   inspectionChecklist: InspectionItem[];
@@ -32,8 +33,9 @@ interface UsedMarketResult {
    ============================================ */
 const RISK_STYLES: Record<string, { ring: string; bg: string; text: string; icon: string }> = {
   '极高': { ring: 'border-red-400', bg: 'bg-red-50', text: 'text-red-700', icon: '🔴' },
+  '高':   { ring: 'border-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', icon: '🟠' },
   '中等': { ring: 'border-yellow-400', bg: 'bg-yellow-50', text: 'text-yellow-700', icon: '🟡' },
-  '低': { ring: 'border-emerald-400', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '🟢' },
+  '低':   { ring: 'border-emerald-400', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '🟢' },
 };
 
 /* ============================================
@@ -159,7 +161,7 @@ function InspectionChecklist({
               className={`flex w-full items-start gap-3 py-3 text-left transition-colors ${checked ? 'opacity-70' : ''}`}
             >
               <span
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
                   checked
                     ? 'border-blue-500 bg-blue-500'
                     : 'border-slate-300 bg-white hover:border-blue-300'
@@ -177,7 +179,7 @@ function InspectionChecklist({
                     checked ? 'text-slate-400 line-through' : 'text-slate-900'
                   }`}
                 >
-                  {idx + 1}. {item.step}
+                  {item.step}
                 </p>
                 <p
                   className={`mt-0.5 text-xs leading-relaxed transition-colors ${
@@ -224,9 +226,6 @@ function ScamCards({ routines }: { routines: ScamRoutine[] }) {
             className="rounded-xl border border-red-100 bg-red-50/40 p-4 shadow-sm transition-shadow hover:shadow-md"
           >
             <div className="mb-2 flex items-center gap-2">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600">
-                {i + 1}
-              </span>
               <h4 className="text-sm font-bold text-red-800">{scam.title}</h4>
             </div>
             <p className="mb-2 ml-7 text-xs leading-relaxed text-red-700">
@@ -253,7 +252,7 @@ function generateLocalUsedCheckResult(query: string): UsedMarketResult {
   return {
     intent: 'used_market' as const,
     productName: query,
-    riskLevel: (seed % 3 === 0 ? '极高' : seed % 3 === 1 ? '中等' : '低') as '极高' | '中等' | '低',
+    riskLevel: (seed % 4 === 0 ? '极高' : seed % 4 === 1 ? '高' : seed % 4 === 2 ? '中等' : '低'),
     riskSummary: `「${query}」在二手市场流通量较大，但存在翻新机、组装机冒充原装的风险。建议重点查验序列号一致性、电池健康度、屏幕显示异常等关键指标。`,
     scamRoutines: [
       { title: '"全新未拆封"套路', routine: '卖家声称"全新仅拆封"，实际可能是退换货或翻新机重新塑封', counterMeasure: '要求提供购买凭证、开箱视频，检查包装内是否有非原厂配件' },
@@ -298,52 +297,6 @@ export default function UsedCheckPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ==================== 核心分析函数 ====================
-  const callAnalysisAPI = async (prompt: string): Promise<UsedMarketResult> => {
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s超时（后端45s+重试）
-
-    try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: prompt }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`服务器返回 ${res.status}`);
-      }
-
-      const json = await res.json();
-
-      if (json.error) {
-        throw new Error(json.error);
-      }
-
-      if (json.status !== 'done' || !json.data) {
-        throw new Error('AI 返回数据不完整');
-      }
-
-      const data = json.data;
-      if (!data || data.intent !== 'used_market') {
-        throw new Error('AI 鉴定结果格式异常');
-      }
-
-      return data as UsedMarketResult;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') {
-        throw new Error('请求超时，AI 服务响应过慢');
-      }
-      throw err;
-    }
-  };
-
   // ==================== 提交分析 ====================
   const handleSubmit = async () => {
     const trimmed = description.trim();
@@ -364,8 +317,21 @@ export default function UsedCheckPage() {
 请使用 intent='used_market' 模式输出结果。`;
 
     try {
-      const data = await callAnalysisAPI(prompt);
-      setResult(data);
+      const res = await submitSearch(prompt);
+      if (res.status !== 'done' || !res.data) {
+        throw new Error(res.error || 'AI 返回数据不完整');
+      }
+      const data = res.data as any;
+      // 校验：如果 AI 返回的 intent 不是 used_market，强制使用本地兜底
+      if (data.intent !== 'used_market') {
+        console.warn('[UsedCheck] AI 返回 intent=' + data.intent + '（期望 used_market），使用本地兜底');
+        const localData = generateLocalUsedCheckResult(trimmed);
+        setResult(localData);
+        setIsFallback(true);
+        setSubmittedQuery(trimmed);
+        return;
+      }
+      setResult(res.data as UsedMarketResult);
       setSubmittedQuery(trimmed);
     } catch (err: any) {
       const msg = err?.message || String(err);

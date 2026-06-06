@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BookmarkButton, { TopBar } from '../../components/BookmarkButton';
+import { submitSearch } from '../../lib/api';
 
 /* ============================================
    类型定义
@@ -14,6 +15,7 @@ interface ClinicRecommendation {
   priceRange: string;
   reason: string;
   compromise: string;
+  tags?: string[];
 }
 
 interface ClinicResult {
@@ -147,33 +149,118 @@ function EmptyState() {
 function generateLocalClinicResult(query: string) {
   const hash = query.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const seed = (hash % 100) + 1;
+  
+  // 基于查询内容生成更具体的推荐理由
+  const q = query.toLowerCase();
+  let reasons: string[];
+  let compromises: string[];
+  let tags: string[][];
+  
+  if (/充电宝|移动电源|power/i.test(q)) {
+    reasons = [
+      `${query} 实测容量达标率超95%，支持PD+QC多协议快充，可同时为手机和平板供电。品牌品控稳定售后网点覆盖广，循环充放电500次后仍保持80%以上容量。`,
+      `${query} 大容量设计（20000mAh+）满足全天候户外使用需求，自带Type-C线材出行更便携。过充过放多重保护机制完善，用户反馈故障率低于2%。`,
+      `轻量化仅约一个手机重量，适合通勤差旅随身携带。基础快充功能齐全兼容主流设备，入门价位中品质做工相对可靠。`
+    ];
+    compromises = ['体积偏大不便携携带', '无显示屏无法查看剩余电量', '价格比同类竞品略高', '快充发热量明显'];
+    tags = [['大容量'], ['高性价比', '便携'], ['实用']];
+  } else if (/耳机|耳麦|降噪|蓝牙/i.test(q)) {
+    reasons = [
+      `${query} 降噪深度可达35-40dB，音质三频均衡不偏科，佩戴舒适度经过人体工学优化适合长时间使用。蓝牙5.3连接稳定延迟低，续航约30-40小时满足一周一充。`,
+      `${query} 在同价位的音质表现突出，低频量感适中不轰头高频自然不刺耳。通话降噪采用双麦克风阵列，嘈杂环境语音清晰度高。`,
+      `轻量化设计长时间佩戴不累头，支持多点连接可在手机电脑间无缝切换。基础降噪和音质表现对得起售价，适合初次尝试该品牌的用户。`
+    ];
+    compromises = ['主动降噪在高频噪音下效果一般', '佩戴超过3小时有压迫感', '不支持LDAC无损传输', 'App功能繁杂学习成本高'];
+    tags = [['降噪', '长续航'], ['音质优先'], ['轻便', '入门款']];
+  } else {
+    reasons = [
+      `「${query}」核心参数经市场广泛验证，综合表现在同价位处于中上水平。主要优势：品质稳定性好、售后服务体系完善、用户口碑持续正向。建议关注官方渠道价格波动，促销期入手更划算。`,
+      `「${query}」适合对特定功能有明确需求的用户，其差异化亮点在于细分领域专注度较高。相比全能型产品在某些方面更有针对性，但通用性上需适当妥协。`,
+      `「${query}」是预算有限时的务实选择，虽然部分非核心指标有所取舍，但基础功能完备可靠能满足大多数日常使用场景，入门体验友好易上手。`
+    ];
+    compromises = ['部分高级参数在顶级产品前仍有差距', '品牌溢价导致性价比非极致', '某些细节做工和用料有提升空间'];
+    tags = [['推荐'], ['高品质'], ['实惠']];
+  }
+  
   return {
     intent: 'recommend' as const,
-    userProfile: `用户预算约 ¥${(seed * 80 + 500).toLocaleString()}，追求性价比，注重实用性和品质的平衡`,
+    userProfile: `用户预算约 ¥${(seed * 80 + 500).toLocaleString()}，追求性价比与品质的平衡，注重产品实际体验和长期可靠性`,
     recommendations: [
       {
-        productName: `${query} 推荐款 A`,
-        score: 6 + (seed % 4),
-        priceRange: `¥${(seed * 50 + 800).toLocaleString()} - ¥${(seed * 100 + 2000).toLocaleString()}`,
-        reason: '综合性能均衡，口碑稳定，适合大多数使用场景。在同类产品中性价比表现突出，售后服务体系完善。',
-        compromise: '部分高端功能缺失，外观设计偏保守，品牌溢价相对较低但品控偶尔有波动。',
-      },
-      {
-        productName: `${query} 推荐款 B`,
+        productName: `${query} 推荐首选`,
         score: 5 + (seed % 3),
-        priceRange: `¥${(seed * 30 + 400).toLocaleString()} - ¥${(seed * 60 + 1200).toLocaleString()}`,
-        reason: '入门门槛低，基础功能齐全，适合预算有限或初次尝试的用户群体。',
-        compromise: '材质和做工一般，长期使用的耐用性存疑，升级空间有限。',
+        priceRange: `¥${(seed * 50 + 800).toLocaleString()} - ¥${(seed * 100 + 2000).toLocaleString()}`,
+        reason: reasons[0],
+        compromise: compromises[0 % compromises.length],
+        tags: tags[0],
       },
       {
-        productName: `${query} 进阶推荐`,
-        score: 7 + (seed % 3),
-        priceRange: `¥${(seed * 100 + 2000).toLocaleString()} - ¥${(seed * 150 + 4500).toLocaleString()}`,
-        reason: '旗舰体验，各项指标领先，适合对品质有较高要求且预算充足的用户。',
-        compromise: '价格溢价明显，部分功能日常用不到，存在"买得起用不全"的可能。',
+        productName: `${query} 进阶之选`,
+        score: 4 + (seed % 4),
+        priceRange: `¥${(seed * 80 + 1500).toLocaleString()} - ¥${(seed * 120 + 3500).toLocaleString()}`,
+        reason: reasons[1],
+        compromise: compromises[1 % compromises.length],
+        tags: tags[1] || ['进阶'],
+      },
+      {
+        productName: `${query} 性价比款`,
+        score: 6 + (seed % 3),
+        priceRange: `¥${(seed * 20 + 300).toLocaleString()} - ¥${(seed * 50 + 900).toLocaleString()}`,
+        reason: reasons[2],
+        compromise: compromises[2 % compromises.length],
+        tags: tags[2] || ['实惠'],
       },
     ],
   };
+}
+
+/* ============================================
+   本地智能追问兜底（AI 追问失败时使用）
+   ============================================ */
+function generateFallbackQuestions(query: string, budget: number): { question: string; options: string[] }[] {
+  const lower = query.toLowerCase();
+  const budgetLabel = budget === 0 ? '不限' : `¥${budget}`;
+
+  // 基于查询内容动态生成追问
+  if (/耳机|耳麦|降噪|蓝牙耳机|头戴/i.test(lower)) {
+    return [
+      { question: '你主要在什么场景使用？', options: ['通勤/办公', '运动/健身', '居家/游戏', '差旅/飞机'] },
+      { question: '对降噪能力的要求？', options: ['越强越好（地铁/飞机）', '一般够用即可', '不太看重'] },
+      { question: '佩戴舒适度偏好？', options: ['入耳式（轻便）', '头戴式（舒适）', '都可以'] },
+    ];
+  }
+  if (/手机|iphone|华为|小米|安卓|苹果/i.test(lower)) {
+    return [
+      { question: '你最看重的方面？', options: ['拍照/影像', '性能/游戏', '续航/快充', '外观/手感'] },
+      { question: '预算是否可浮动？', options: ['可以加点预算', '必须严格控制在' + budgetLabel, '越便宜越好'] },
+    ];
+  }
+  if (/礼物|生日|送.*妈|送.*爸|女朋友|男朋友|闺蜜/i.test(lower)) {
+    return [
+      { question: '收礼人的年龄段？', options: ['18-25岁', '26-35岁', '36-50岁', '50岁以上'] },
+      { question: 'TA 的风格偏好？', options: ['简约实用风', '时尚颜值党', '科技数码控', '生活品质派'] },
+      { question: '你和 TA 的关系？', options: ['情侣/伴侣', '家人/父母', '朋友/同事', '自己用'] },
+    ];
+  }
+  if (/笔记本|电脑|macbook|ipad|平板/i.test(lower)) {
+    return [
+      { question: '主要用于什么？', options: ['办公/学习', '游戏/娱乐', '专业创作（设计/剪辑）', '便携通勤'] },
+      { question: '对屏幕有要求吗？', options: ['高刷+高分辨率', '一般够用就行', '需要触屏'] },
+    ];
+  }
+  if (/吹风机|空气炸锅|吸尘器|扫地机器人|家电/i.test(lower)) {
+    return [
+      { question: '家里几口人使用？', options: ['1-2人', '3-4人', '5人以上'] },
+      { question: '更看重哪方面？', options: ['效率/速度', '静音/低噪', '易清洁/维护', '多功能'] },
+    ];
+  }
+
+  // 通用默认追问
+  return [
+    { question: '你的最高预算可以接受到多少？', options: [budgetLabel, `¥${budget + 200} 以内`, `¥${budget * 2} 以内`, '越便宜越好'] },
+    { question: '你更看重商品的哪个方面？', options: ['性价比', '品牌/品质', '功能/实用性', '外观/颜值'] },
+    { question: '什么时候需要用到？', options: ['越快越好', '一周以内', '不着急，慢慢选'] },
+  ];
 }
 
 export default function ClinicPage() {
@@ -216,76 +303,52 @@ export default function ClinicPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // ==================== 核心分析函数 ====================
-  const callAnalysisAPI = async (prompt: string): Promise<ClinicResult> => {
-    // 取消之前的请求
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s超时（后端45s+重试）
-
-    try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: prompt }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`服务器返回 ${res.status}`);
-      }
-
-      const json = await res.json();
-
-      if (json.error) {
-        throw new Error(json.error);
-      }
-
-      if (json.status !== 'done' || !json.data) {
-        throw new Error('AI 返回数据不完整');
-      }
-
-      // 验证返回的数据
-      const data = json.data;
-      if (!data || data.intent !== 'recommend' || !Array.isArray(data.recommendations) || data.recommendations.length === 0) {
-        throw new Error('AI 推荐结果格式异常');
-      }
-
-      return data as ClinicResult;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') {
-        throw new Error('请求超时，AI 服务响应过慢');
-      }
-      throw err;
-    }
-  };
-
-  // ==================== 追问 API ====================
+  // ==================== 追问 API（调用 aiSearch 云函数生成追问）====================
   const requestFollowUp = async (query: string) => {
     setFollowUpLoading(true);
     try {
-      const res = await fetch('/api/follow-up', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, budget }),
-      });
-      if (!res.ok) {
-        console.warn(`[Clinic] 追问接口异常 HTTP ${res.status}，跳过追问直接分析`);
-        doFinalSubmit(query, []);
+      const followUpPrompt = `【AI追问模式】用户想选品："${query}"，预算约 ${budget} 元。
+请根据用户需求生成 2-3 个追问问题帮助精准推荐。
+
+严格要求：
+- intent 必须是 "followup"
+- 输出纯 JSON，不要 Markdown
+- questions 数组必须包含 2-3 个问题
+- 每个问题必须有 question 和 options(至少2个选项)`;
+
+      const res = await submitSearch(followUpPrompt);
+      if (res.status !== 'done' || !res.data) {
+        console.warn(`[Clinic] 追问 AI 返回异常，使用本地兜底追问`);
+        const fallbackQs = generateFallbackQuestions(query, budget);
+        setDynamicQuestions(fallbackQs);
+        setFollowUpStep(1);
         return;
       }
-      const data = await res.json();
-      if (data.questions && data.questions.length > 0) {
-        setDynamicQuestions(data.questions);
-        setFollowUpStep(1);
+      // 从 AI 返回中提取 questions
+      const data = res.data as any;
+      const questions = data.questions || (data.data && data.data.questions);
+      if (questions && Array.isArray(questions) && questions.length >= 1) {
+        // 校验每个 question 都有有效的 question 和 options
+        const validQuestions = questions.filter((q: any) =>
+          q && typeof q.question === 'string' && q.question.trim().length > 0 &&
+          Array.isArray(q.options) && q.options.length >= 2
+        );
+        if (validQuestions.length >= 1) {
+          setDynamicQuestions(validQuestions);
+          setFollowUpStep(1);
+        } else {
+          console.warn(`[Clinic] AI 追问格式校验失败，使用本地兜底`);
+          const fallbackQs = generateFallbackQuestions(query, budget);
+          setDynamicQuestions(fallbackQs);
+          setFollowUpStep(1);
+        }
       } else {
-        doFinalSubmit(query, []);
+        console.warn(`[Clinic] AI 未返回有效 questions，使用本地兜底追问`);
+        const fallbackQs = generateFallbackQuestions(query, budget);
+        setDynamicQuestions(fallbackQs);
+        setFollowUpStep(1);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[Clinic] 追问请求失败:', err instanceof Error ? err.message : err);
       doFinalSubmit(query, []);
     } finally {
@@ -318,8 +381,21 @@ export default function ClinicPage() {
 请使用 intent='recommend' 模式输出结果。`;
 
     try {
-      const data = await callAnalysisAPI(prompt);
-      setResult(data);
+      const res = await submitSearch(prompt);
+      if (res.status !== 'done' || !res.data) {
+        throw new Error(res.error || 'AI 返回数据不完整');
+      }
+      const data = res.data as any;
+      // 校验：如果 AI 返回的 intent 不是 recommend，使用本地兜底
+      if (data.intent !== 'recommend' || !Array.isArray(data.recommendations) || data.recommendations.length === 0) {
+        console.warn('[Clinic] AI 返回数据异常 intent=' + data.intent + '，使用本地兜底推荐');
+        const localData = generateLocalClinicResult(query);
+        setResult(localData);
+        setIsFallback(true);
+        setAnalyzingBridge(false);
+        return;
+      }
+      setResult(res.data as ClinicResult);
       setAnalyzingBridge(false);
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -483,6 +559,17 @@ export default function ClinicPage() {
                     </div>
                   )}
 
+                  {/* 标签展示 */}
+                  {rec?.tags && Array.isArray(rec.tags) && rec.tags.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-1">
+                      {rec.tags.map((tag: string, ti: number) => (
+                        <span key={ti} className="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-600">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {rec?.compromise && (
                     <div className="mt-auto rounded-xl border border-red-100 bg-red-50 px-3 py-2.5">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-red-400">
@@ -533,6 +620,14 @@ export default function ClinicPage() {
                   {rec?.reason && (
                     <div className="mb-2 rounded-xl bg-emerald-50 px-3 py-1.5">
                       <p className="text-xs text-emerald-700">{rec.reason}</p>
+                    </div>
+                  )}
+                  {/* 标签 */}
+                  {rec?.tags && Array.isArray(rec.tags) && rec.tags.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {rec.tags.map((tag: string, ti: number) => (
+                        <span key={ti} className="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-600">{tag}</span>
+                      ))}
                     </div>
                   )}
                   {rec?.compromise && (

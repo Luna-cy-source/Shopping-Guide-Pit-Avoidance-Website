@@ -20,7 +20,11 @@ let ready = false;
 let initPromise: Promise<boolean> | null = null;
 
 function getDb() {
-  if (!db) db = getApp().database();
+  if (!db) {
+    const app = getApp();
+    if (!app) return null;
+    db = app.database();
+  }
   return db;
 }
 

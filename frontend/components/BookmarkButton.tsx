@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useBookmarks, BookmarkType } from '../hooks/useBookmarks';
+import { useAuth } from '../hooks/useAuth';
 import Link from 'next/link';
 
 // ============================================
@@ -23,7 +24,8 @@ const TYPE_LABELS: Record<BookmarkType, { label: string; saved: string; hint: st
 };
 
 export default function BookmarkButton({ productName, reportPath, type = 'report', compact, reportData }: BookmarkButtonProps) {
-  const { isBookmarked, toggleBookmark, mounted } = useBookmarks();
+  const { user } = useAuth();
+  const { isBookmarked, toggleBookmark, mounted } = useBookmarks(user?.uid);
   const [justSaved, setJustSaved] = useState(false);
   const bookmarked = mounted && isBookmarked(reportPath);
 
