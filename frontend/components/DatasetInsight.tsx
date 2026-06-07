@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { apiUrl } from '../lib/api';
+import recallData from '../lib/data/recall_summary.json';
 
 interface RecallSummary {
   totalRecords: number;
@@ -31,16 +30,8 @@ interface Props {
 }
 
 export default function DatasetInsight({ category, flaws }: Props) {
-  const [recall, setRecall] = useState<RecallSummary | null>(null);
-
-  useEffect(() => {
-    fetch(apiUrl('/api/datasets/recalls'))
-      .then((r) => r.json())
-      .then(setRecall)
-      .catch(() => {});
-  }, []);
-
-  if (!recall) return null;
+  // 直接使用静态 JSON 数据
+  const recall = recallData as RecallSummary;
 
   // 根据品类匹配相关风险
   const matchedRisks: { name: string; count: number; pct: number }[] = [];

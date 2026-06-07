@@ -7,6 +7,7 @@ import MiniSearch from '../../components/MiniSearch';
 import AuthButtons from '../../components/AuthButtons';
 import BookmarkButton from '../../components/BookmarkButton';
 import PitSubmissionModal from '../../components/PitSubmissionModal';
+import DatasetInsight from '../../components/DatasetInsight';
 
 function ReportContent() {
   const searchParams = useSearchParams();
@@ -87,6 +88,14 @@ function ReportContent() {
 
         {/* 流式渲染组件 */}
         <ReportStreamerWrapper query={decodedQuery} onDataReady={setReportData} />
+
+        {/* 数据集交叉验证 */}
+        <div className="mt-6">
+          <DatasetInsight
+            category={reportData?.category}
+            flaws={reportData?.flaws}
+          />
+        </div>
 
         {/* 避坑线索提交 */}
         <div className="mt-12 flex justify-center">

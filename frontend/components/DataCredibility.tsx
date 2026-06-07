@@ -1,11 +1,12 @@
 // =====================================================
-// 数据背书组件 — 从 Worker API 动态读取数据集统计
+// 数据背书组件 — 直接引入预处理 JSON 数据集统计
 // =====================================================
 
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiUrl } from '../lib/api';
+import recallData from '../lib/data/recall_summary.json';
+import reviewData from '../lib/data/review_summary.json';
 
 // ---- 类型定义 ----
 interface HazardItem {
@@ -49,67 +50,17 @@ const COLORS = [
   'bg-teal-500', 'bg-cyan-500', 'bg-blue-500',
 ];
 
-// ---- 骨架屏 ----
-function Skeleton() {
-  return (
-    <section className="w-full bg-white px-4 py-12">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 text-center">
-          <div className="mx-auto h-4 w-48 rounded bg-slate-100 animate-pulse" />
-          <div className="mx-auto mt-2 h-3 w-72 rounded bg-slate-50 animate-pulse" />
-        </div>
-        <div className="grid gap-5 md:grid-cols-2">
-          {[1, 2].map((i) => (
-            <div key={i} className="rounded-2xl border border-slate-100 bg-slate-50 p-6 animate-pulse">
-              <div className="h-5 w-24 rounded bg-slate-200 mb-3" />
-              <div className="h-6 w-48 rounded bg-slate-200 mb-2" />
-              <div className="h-4 w-full rounded bg-slate-100 mb-4" />
-              <div className="space-y-2">
-                {[1,2,3,4,5].map((j) => (
-                  <div key={j} className="h-4 w-full rounded bg-slate-100" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // ---- 主组件 ----
 export default function DataCredibility() {
-  const [recall, setRecall] = useState<RecallSummary | null>(null);
-  const [review, setReview] = useState<ReviewSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  // 直接使用静态 JSON 数据（无需异步 fetch）
+  const recall = recallData as RecallSummary;
+  const review = reviewData as ReviewSummary;
   const [animated, setAnimated] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    async function fetchData() {
-      try {
-        const [r1, r2] = await Promise.all([
-          fetch(apiUrl('/api/datasets/recalls')).then((r) => r.json()),
-          fetch(apiUrl('/api/datasets/reviews')).then((r) => r.json()),
-        ]);
-        if (!cancelled) {
-          setRecall(r1);
-          setReview(r2);
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    fetchData();
-    const timer = setTimeout(() => setAnimated(true), 500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    const timer = setTimeout(() => setAnimated(true), 300);
+    return () => clearTimeout(timer);
   }, []);
-
-  if (loading || !recall || !review) return <Skeleton />;
 
   const maxCount = recall.hazardDistribution[0]?.count || 1;
 
