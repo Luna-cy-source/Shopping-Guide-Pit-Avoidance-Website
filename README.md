@@ -1,33 +1,4 @@
-# 大数据案例期末项目报告
-
-**学生姓名：** 王倩  **学 号：** ______________  **得分：** ______________
-
-**项目名称：** AI 避坑导购系统（AI-Powered Shopping Guide & Pit-Avoidance System）
-
-**开发类型：** ☑ 全栈项目 （□ 网页端项目 □ 桌面应用 □ 移动端项目 □ 本地项目）
-
-**完成时间：** 2026 年 6 月 6 日
-
-**线上访问地址：** https://pit-avoidance-d3gx1xj3j622007d9-1438973051.tcloudbaseapp.com/used-check.html
-
-**GitHub 仓库：** https://github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website
-
----
-
-## 项目工具、资源与附件清单
-
-| 资源类别 | 实际使用内容 | 用途说明 |
-|---|---|---|
-| LLM 工具 | DeepSeek API (deepseek-chat) | 核心 AI 分析引擎：间接聚合京东/淘宝/天猫/拼多多/苏宁/抖音/小红书/B站/知乎/什么值得买等多平台评论，5 种 Intent 智能路由驱动单品检测/对比/选品/二手鉴定等，输出结构化 JSON 避坑方案报告 |
-| IDE 开发工具 | CodeBuddy（VS Code + AI 辅助） | 项目编写、代码调试、文件管理、语法检测与项目运行 |
-| 智能 Agent 工具 | CloudBase Agent | 辅助云函数代码生成、逻辑纠错、CloudBase 资源管理 |
-| Github 仓库 | [github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website](https://github.com/Luna-cy-source/Shopping-Guide-Pit-Avoidance-Website) | 项目版本管理、代码备份、迭代记录留存 |
-| 自定义 Website | [pit-avoidance-d3gx1xj3j622007d9-1438973051.tcloudbaseapp.com](https://pit-avoidance-d3gx1xj3j622007d9-1438973051.tcloudbaseapp.com) | 项目线上公开访问地址 |
-| 云服务商 | 腾讯云 CloudBase（NoSQL 数据库 + 云函数 + 静态托管） | 项目部署、数据存储、后端云函数（aiSearch + registerUser）、静态网站 CDN 加速 |
-| 程序包附件 | 项目源码包、结课项目报告.md、.env.example | 完整可运行源码、配套说明文档、环境配置模板 |
-| 补充说明 | 价格数据采用"实时抓取 + AI 估算"双源互补策略：优先慢慢买 API → 失败降级 DeepSeek 估算；评论数据采用"AI 知识库聚合"策略：借助 DeepSeek 训练数据中涵盖的多平台评论实现语义聚合；电商跳转通过京东联盟/淘宝客 API 实现佣金追踪 | |
-
----
+# AI 遵坑导购系统（AI-Powered Shopping Guide & Pit-Avoidance System）
 
 ## 摘要
 
